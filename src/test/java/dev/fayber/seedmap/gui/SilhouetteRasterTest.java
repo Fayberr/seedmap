@@ -51,6 +51,31 @@ class SilhouetteRasterTest {
         return total;
     }
 
+    @Test void opacityIsUniformAcrossOpaqueEdgesAndGuiScales() {
+        BufferedImage solid = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 4; y <= 11; y++)
+            for (int x = 4; x <= 11; x++)
+                solid.setRGB(x, y, 0xFFFFFFFF);
+        for (int scale : new int[]{1, 2, 4, 6}) {
+            int[] ring = SilhouetteRaster.rasterize(solid, scale);
+            int width = SilhouetteRaster.SIZE * scale;
+            // Four equivalent outside-facing sides have identical alpha.
+            int top = ring[((4 + SilhouetteRaster.MARGIN) * scale - 1) * width
+                    + (8 + SilhouetteRaster.MARGIN) * scale] >>> 24;
+            int left = ring[((8 + SilhouetteRaster.MARGIN) * scale) * width
+                    + (4 + SilhouetteRaster.MARGIN) * scale - 1] >>> 24;
+            int right = ring[((8 + SilhouetteRaster.MARGIN) * scale) * width
+                    + (12 + SilhouetteRaster.MARGIN) * scale] >>> 24;
+            int bottom = ring[((12 + SilhouetteRaster.MARGIN) * scale) * width
+                    + (8 + SilhouetteRaster.MARGIN) * scale] >>> 24;
+            assertEquals(top, left, "top-left width mismatch at GUI scale " + scale);
+            assertEquals(top, right, "top-right width mismatch at GUI scale " + scale);
+            assertEquals(top, bottom, "top-bottom width mismatch at GUI scale " + scale);
+            assertTrue(top >= 180, "outline should be bright but thin");
+            assertEquals(0, ring[0], "canvas should remain transparent");
+        }
+    }
+
     @Test void emptyIconCostsNoDrawnPixels() {
         var empty=new BufferedImage(16,16,BufferedImage.TYPE_INT_ARGB);
         assertEquals(0,java.util.Arrays.stream(SilhouetteRaster.rasterize(empty,4))
