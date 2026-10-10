@@ -17,7 +17,7 @@ public final class TestRegistryBootstrap {
     private TestRegistryBootstrap() {}
 
     public static void bindVanillaTags() {
-        PackResources vanillaPack = ServerPacksSource.createVanillaPackSource();
+        PackResources vanillaPack = ServerPacksSource.createVanillaPackSource().fullResources();
         try (MultiPackResourceManager resourceManager = new MultiPackResourceManager(PackType.SERVER_DATA, List.of(vanillaPack))) {
             RegistryAccess.Frozen staticRegistryManager = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
             List<Registry.PendingTags<?>> pendingTagLoads = new ArrayList<>();
