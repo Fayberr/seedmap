@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "dev.fayber.seedmap.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "GuiRendererCaptureMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
