@@ -78,8 +78,15 @@ public final class IconSilhouette {
         }
         if (source == null && item != null) {
             Identifier key = BuiltInRegistries.ITEM.getKey(item);
-            source = load(manager, Identifier.fromNamespaceAndPath(key.getNamespace(),
-                    "textures/item/" + key.getPath() + ".png"));
+            ItemModelTexture.Result model = ItemModelTexture.resolve(manager, key);
+            if (model.hasDefinition()) {
+                // A model-aware source avoids the wrong white silhouette when
+                // a resource pack remaps the item's icon or replaces it with 3D geometry.
+                if (model.texture() != null) source = load(manager, model.texture());
+            } else {
+                source = load(manager, Identifier.fromNamespaceAndPath(key.getNamespace(),
+                        "textures/item/" + key.getPath() + ".png"));
+            }
         }
         if (source == null) return Optional.empty();
 
