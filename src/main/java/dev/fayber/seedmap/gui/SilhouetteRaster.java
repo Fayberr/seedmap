@@ -43,7 +43,7 @@ public final class SilhouetteRaster {
                 }
                 // Outside-only stroke: the opaque original icon is drawn on top.
                 int opacity = Math.clamp(Math.round((dilated - inside) * 235), 0, 235);
-                pixels[sy * size + sx] = (opacity << 24) | 0xFFFFFF;
+                pixels[sy * size + sx] = opacity == 0 ? 0 : (opacity << 24) | 0xFFFFFF;
             }
         }
         return pixels;
