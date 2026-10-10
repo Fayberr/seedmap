@@ -29,7 +29,7 @@ import java.util.OptionalLong;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
-import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
@@ -84,9 +84,9 @@ public class SeedMapScreen extends Screen {
     protected final SeedMapConfig config = SeedMapClient.config();
     private boolean dragging;
     private EditBox seedField;
-    private Button applyButton;
+    private AbstractButton applyButton;
     private EditBox goField;
-    private Button goButton;
+    private AbstractButton goButton;
     private String flash;
     private long flashUntil;
     private ContextMenu menu;
@@ -100,10 +100,10 @@ public class SeedMapScreen extends Screen {
     private double measureEndZ;
     private boolean hasMeasurement;
     private StructureGrid grid;
-    private Button targetButton;
+    private AbstractButton targetButton;
     private StructurePickerWidget picker;
     private EditBox pickerFilter;
-    private Button searchButton;
+    private AbstractButton searchButton;
     private ResultsListWidget resultsList;
     private final List<SegmentedControl> controls = new ArrayList<>();
     private int gridTop;
@@ -174,8 +174,8 @@ public class SeedMapScreen extends Screen {
         seedField.setValue(currentSeedText());
         seedField.setEditable(!singleplayer);
         addRenderableWidget(seedField);
-        applyButton = Button.builder(Component.translatable("seedmap.screen.apply"), b -> applySeed())
-                .bounds(px + pw - 36, y, 36, BTN_H).build();
+        applyButton = new SeedMapButton(px + pw - 36, y, 36, BTN_H,
+                Component.translatable("seedmap.screen.apply"), this::applySeed);
         applyButton.active = !singleplayer;
         addRenderableWidget(applyButton);
         y += BTN_H + GAP;
@@ -186,8 +186,8 @@ public class SeedMapScreen extends Screen {
         goField.setResponder(text -> goField.setTextColor(
                 text.isBlank() || CoordinateParser.parse(text).isPresent() ? 0xFFFFFF : 0xFF5555));
         addRenderableWidget(goField);
-        goButton = Button.builder(Component.translatable("seedmap.screen.go"), b -> goToTyped())
-                .bounds(px + pw - 36, y, 36, BTN_H).build();
+        goButton = new SeedMapButton(px + pw - 36, y, 36, BTN_H,
+                Component.translatable("seedmap.screen.go"), this::goToTyped);
         addRenderableWidget(goButton);
         y += BTN_H + GAP + 1;
 
@@ -275,8 +275,8 @@ public class SeedMapScreen extends Screen {
                 SegmentedControl.Segment.of(Component.translatable("seedmap.screen.mode_biome"), () -> biomeMode, () -> setBiomeMode(true)))));
         y += SEG_H + GAP;
 
-        targetButton = Button.builder(targetLabel(), b -> togglePicker(biomeMode ? biomeIds : structureIds))
-                .bounds(px, y, pw, BTN_H).build();
+        targetButton = new SeedMapButton(px, y, pw, BTN_H, targetLabel(),
+                () -> togglePicker(biomeMode ? biomeIds : structureIds));
         addRenderableWidget(targetButton);
         y += BTN_H + GAP;
 
@@ -292,8 +292,8 @@ public class SeedMapScreen extends Screen {
         controls.add(new SegmentedControl(px, y, pw, SEG_H, radii));
         y += SEG_H + GAP;
 
-        searchButton = Button.builder(Component.translatable("seedmap.screen.search"), b -> runSearch())
-                .bounds(px, y, pw, BTN_H).build();
+        searchButton = new SeedMapButton(px, y, pw, BTN_H,
+                Component.translatable("seedmap.screen.search"), this::runSearch);
         searchButton.active = session != null && !searching;
         addRenderableWidget(searchButton);
         y += BTN_H + GAP + 2;
