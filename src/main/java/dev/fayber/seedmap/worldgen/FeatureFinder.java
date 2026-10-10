@@ -20,6 +20,7 @@ import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeSource;
+import net.minecraft.world.level.biome.BiomeResolver;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.biome.FeatureSorter;
 import net.minecraft.world.level.chunk.ChunkGenerator;
@@ -39,17 +40,17 @@ public final class FeatureFinder {
     private final long seed;
     private final ChunkGenerator generator;
     private final BiomeSource biomeSource;
-    private final Climate.Sampler sampler;
+    private final BiomeResolver resolver;
     private final LevelHeightAccessor heightAccessor;
     private final WorldGenLevel level;
     private final Map<Identifier, Entry> entries = new LinkedHashMap<>();
 
-    FeatureFinder(long seed, ChunkGenerator generator, BiomeSource biomeSource, Climate.Sampler sampler,
+    FeatureFinder(long seed, ChunkGenerator generator, BiomeSource biomeSource, BiomeResolver resolver,
                   LevelHeightAccessor heightAccessor, HolderLookup.Provider lookup) {
         this.seed = seed;
         this.generator = generator;
         this.biomeSource = biomeSource;
-        this.sampler = sampler;
+        this.resolver = resolver;
         this.heightAccessor = heightAccessor;
         this.level = createLevel();
         List<FeatureSorter.StepFeatureData> steps = featuresPerStep();
@@ -100,8 +101,8 @@ public final class FeatureFinder {
             out.add(new FeatureHit(featureId, pos.getX(), pos.getY(), pos.getZ()));
             return;
         }
-        modifiers.get(depth).getPositions(context, random, pos)
-                .forEach(next -> walk(modifiers, depth + 1, context, random, next, featureId, out));
+        modifiers.get(depth).modify(context, random, pos,
+                next -> walk(modifiers, depth + 1, context, random, next, featureId, out));
     }
 
     private int stepOf(Holder<PlacedFeature> feature) {
@@ -131,10 +132,10 @@ public final class FeatureFinder {
                 (proxy, method, args) -> switch (method.getName()) {
                     case "getBiome" -> {
                         BlockPos p = (BlockPos) args[0];
-                        yield biomeSource.getNoiseBiome(p.getX() >> 2, p.getY() >> 2, p.getZ() >> 2, sampler);
+                        yield resolver.getNoiseBiome(p.getX() >> 2, p.getY() >> 2, p.getZ() >> 2);
                     }
                     case "getNoiseBiome", "getUncachedNoiseBiome" ->
-                            biomeSource.getNoiseBiome((Integer) args[0], (Integer) args[1], (Integer) args[2], sampler);
+                            resolver.getNoiseBiome((Integer) args[0], (Integer) args[1], (Integer) args[2]);
                     case "getMinY" -> heightAccessor.getMinY();
                     case "getHeight" -> heightAccessor.getHeight();
                     case "getMaxY" -> heightAccessor.getMaxY();

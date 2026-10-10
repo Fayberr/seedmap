@@ -29,6 +29,7 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeSource;
+import net.minecraft.world.level.biome.BiomeResolver;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList;
 import net.minecraft.world.level.block.Rotation;
@@ -83,7 +84,7 @@ public final class SeedWorld {
     private final Dimension dimension;
     private final String profile;
     private final BiomeSource biomeSource;
-    private final Climate.Sampler sampler;
+    private final BiomeResolver resolver;
     private final RandomState randomState;
     private final NoiseBasedChunkGenerator chunkGenerator;
     private final LevelHeightAccessor heightAccessor;
@@ -108,22 +109,10 @@ public final class SeedWorld {
         static final HolderLookup.Provider INSTANCE = createVanillaWrapperLookup();
     }
 
-    private static final List<RegistryDataLoader.RegistryData<?>> WORLDGEN_ENTRIES = List.of(
-            new RegistryDataLoader.RegistryData<>(Registries.CONFIGURED_CARVER, ConfiguredWorldCarver.DIRECT_CODEC, RegistryValidator.none()),
-            new RegistryDataLoader.RegistryData<>(Registries.CONFIGURED_FEATURE, ConfiguredFeature.DIRECT_CODEC, RegistryValidator.none()),
-            new RegistryDataLoader.RegistryData<>(Registries.PLACED_FEATURE, PlacedFeature.DIRECT_CODEC, RegistryValidator.none()),
-            new RegistryDataLoader.RegistryData<>(Registries.STRUCTURE, Structure.DIRECT_CODEC, RegistryValidator.none()),
-            new RegistryDataLoader.RegistryData<>(Registries.STRUCTURE_SET, StructureSet.DIRECT_CODEC, RegistryValidator.none()),
-            new RegistryDataLoader.RegistryData<>(Registries.PROCESSOR_LIST, StructureProcessorType.DIRECT_CODEC, RegistryValidator.none()),
-            new RegistryDataLoader.RegistryData<>(Registries.TEMPLATE_POOL, StructureTemplatePool.DIRECT_CODEC, RegistryValidator.none()),
-            new RegistryDataLoader.RegistryData<>(Registries.BIOME, Biome.DIRECT_CODEC, RegistryValidator.none()),
-            new RegistryDataLoader.RegistryData<>(Registries.MULTI_NOISE_BIOME_SOURCE_PARAMETER_LIST, MultiNoiseBiomeSourceParameterList.DIRECT_CODEC, RegistryValidator.none()),
-            new RegistryDataLoader.RegistryData<>(Registries.NOISE, NormalNoise.NoiseParameters.DIRECT_CODEC, RegistryValidator.none()),
-            new RegistryDataLoader.RegistryData<>(Registries.DENSITY_FUNCTION, DensityFunctions.DIRECT_CODEC, RegistryValidator.none()),
-            new RegistryDataLoader.RegistryData<>(Registries.NOISE_SETTINGS, NoiseGeneratorSettings.DIRECT_CODEC, RegistryValidator.none()));
+    private static final List<RegistryDataLoader.RegistryData<?>> WORLDGEN_ENTRIES = RegistryDataLoader.WORLD_REGISTRIES;
 
     private static HolderLookup.Provider createVanillaWrapperLookup() {
-        PackResources vanillaPack = ServerPacksSource.createVanillaPackSource();
+        PackResources vanillaPack = ServerPacksSource.createVanillaPackSource().fullResources();
         try (MultiPackResourceManager resourceManager = new MultiPackResourceManager(PackType.SERVER_DATA, List.of(vanillaPack))) {
             List<HolderLookup.RegistryLookup<?>> staticRegistries = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY).listRegistries().toList();
             return RegistryDataLoader.load(resourceManager, staticRegistries, WORLDGEN_ENTRIES, Runnable::run).join();
@@ -177,15 +166,15 @@ public final class SeedWorld {
                 : lookup.lookupOrThrow(Registries.NOISE_SETTINGS).getOrThrow(dimension.noiseSettings());
         NoiseGeneratorSettings settings = settingsHolder.value();
         this.randomState = randomState != null ? randomState
-                : RandomState.create(settings, lookup.lookupOrThrow(Registries.NOISE), seed);
-        this.sampler = this.randomState.sampler();
+                : RandomState.create(lookup.lookupOrThrow(Registries.NOISE), seed, settings);
         this.biomeSource = generator != null ? generator.getBiomeSource() : dimension.createBiomeSource(lookup);
+        this.resolver = this.biomeSource.createUncachedResolver(this.randomState);
         this.chunkGenerator = generator != null ? generator : new NoiseBasedChunkGenerator(biomeSource, settingsHolder);
         this.heightAccessor = LevelHeightAccessor.create(settings.noiseSettings().minY(), settings.noiseSettings().height());
 
         HolderLookup.RegistryLookup<StructureSet> setRegistry = lookup.lookupOrThrow(Registries.STRUCTURE_SET);
         this.calculator = calculator != null ? calculator
-                : ChunkGeneratorStructureState.createForNormal(this.randomState, seed, biomeSource, setRegistry);
+                : ChunkGeneratorStructureState.createForNormal(this.randomState, seed, new ChunkPos(0, 0), biomeSource, setRegistry);
         this.structureSets = List.copyOf(this.calculator.possibleStructureSets());
         this.structureRegistry = lookup.lookupOrThrow(Registries.STRUCTURE);
         this.biomeRegistry = lookup.lookupOrThrow(Registries.BIOME);
@@ -203,7 +192,7 @@ public final class SeedWorld {
                 .toList();
         FeatureFinder finder;
         try {
-            finder = new FeatureFinder(seed, chunkGenerator, biomeSource, sampler, heightAccessor, lookup);
+            finder = new FeatureFinder(seed, chunkGenerator, biomeSource, resolver, heightAccessor, lookup);
         } catch (RuntimeException e) {
             finder = null;
         }
@@ -268,11 +257,11 @@ public final class SeedWorld {
     }
 
     public Holder<Biome> biomeAt(int blockX, int blockZ) {
-        return biomeSource.getNoiseBiome(blockX >> 2, SAMPLE_QUART_Y, blockZ >> 2, sampler);
+        return resolver.getNoiseBiome(blockX >> 2, SAMPLE_QUART_Y, blockZ >> 2);
     }
 
     public Holder<Biome> biomeAt(int blockX, int blockY, int blockZ) {
-        return biomeSource.getNoiseBiome(blockX >> 2, blockY >> 2, blockZ >> 2, sampler);
+        return resolver.getNoiseBiome(blockX >> 2, blockY >> 2, blockZ >> 2);
     }
 
     public List<Holder<Structure>> allStructures() {
@@ -390,7 +379,7 @@ public final class SeedWorld {
 
     private boolean canGenerate(Holder<Structure> holder, ChunkPos chunk) {
         BlockPos pos = cheapGenerationPos(holder, chunk);
-        Holder<Biome> biome = biomeSource.getNoiseBiome(pos.getX() >> 2, pos.getY() >> 2, pos.getZ() >> 2, sampler);
+        Holder<Biome> biome = resolver.getNoiseBiome(pos.getX() >> 2, pos.getY() >> 2, pos.getZ() >> 2);
         return holder.value().biomes().contains(biome);
     }
 
@@ -437,7 +426,7 @@ public final class SeedWorld {
             ok = true;
             int x = chunk.getBlockX(9);
             int z = chunk.getBlockZ(9);
-            for (Holder<Biome> biome : biomeSource.getBiomesWithin(x, chunkGenerator.getSeaLevel(), z, 29, sampler)) {
+            for (Holder<Biome> biome : resolver.getBiomesWithin(x, chunkGenerator.getSeaLevel(), z, 29)) {
                 if (!biome.is(BiomeTags.REQUIRED_OCEAN_MONUMENT_SURROUNDING)) {
                     ok = false;
                     break;
