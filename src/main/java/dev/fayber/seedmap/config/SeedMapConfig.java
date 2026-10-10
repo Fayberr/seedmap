@@ -27,7 +27,10 @@ public final class SeedMapConfig {
     public boolean showSlimeChunks = false;
     public boolean diskCache = true;
     public boolean showGrid = false;
-    public boolean showFacing = true;
+    public boolean showFacing = false;
+    public boolean showSpawnMarker = true;
+    public boolean showWaypointMarker = true;
+    public int markerDensity = 1;
     public int biomeY = 64;
 
     public static SeedMapConfig defaults() {
@@ -59,6 +62,7 @@ public final class SeedMapConfig {
             if (config.seeds == null) config.seeds = new LinkedHashMap<>();
             if (config.enabledStructures == null) config.enabledStructures = defaults().enabledStructures;
             if (config.lastRadius <= 0) config.lastRadius = 5000;
+            config.markerDensity = Math.clamp(config.markerDensity, 0, 3);
             return config;
         } catch (IOException | JsonParseException e) {
             SeedMapClient.LOGGER.warn("Could not read {}, using defaults", path, e);
