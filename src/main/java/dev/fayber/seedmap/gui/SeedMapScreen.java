@@ -11,6 +11,7 @@ import dev.fayber.seedmap.map.MapWorker;
 import dev.fayber.seedmap.map.MarkerClusterer;
 import dev.fayber.seedmap.map.MarkerVisibility;
 import dev.fayber.seedmap.map.MapPointerGesture;
+import dev.fayber.seedmap.map.CameraMarker;
 import dev.fayber.seedmap.map.TileKey;
 import dev.fayber.seedmap.waypoint.ShareHandler;
 import java.io.IOException;
@@ -803,10 +804,19 @@ public class SeedMapScreen extends Screen {
         int bx = (int) Math.floor(viewport.screenToWorldX(mouseX));
         int bz = (int) Math.floor(viewport.screenToWorldZ(mouseY));
         List<String> lines = new ArrayList<>();
-        // Explain the two special map symbols directly instead of treating them as generic biomes.
+        // Explain special map symbols directly instead of treating them as generic biomes.
         String specialLabel = null;
         String specialLocation = null;
-        if (config.showWaypointMarker) {
+        if (config.showFreecamMarker) {
+            CameraMarker camera = FreecamCamera.locate(minecraft).orElse(null);
+            if (camera != null
+                    && Math.abs(viewport.worldToScreenX(camera.x()) - mouseX) <= 10
+                    && Math.abs(viewport.worldToScreenZ(camera.z()) - mouseY) <= 10) {
+                specialLabel = "Freecam camera";
+                specialLocation = (int) Math.floor(camera.x()) + ", " + (int) Math.floor(camera.z());
+            }
+        }
+        if (specialLabel == null && config.showWaypointMarker) {
             var waypoint = WaypointState.get().orElse(null);
             if (waypoint != null && waypoint.dimension().equals(session.dimension().levelId())
                     && Math.abs(viewport.worldToScreenX(waypoint.x()) - mouseX) <= 10
@@ -1089,6 +1099,22 @@ public class SeedMapScreen extends Screen {
             context.fill(sx - 1, sy - 10, sx + 1, sy + 10, 0xFFFF4040);
             context.fill(sx - 10, sy - 1, sx + 10, sy + 1, 0xFFFF4040);
         });
+        // A detached Freecam camera is a separate, translucent marker; the real
+        // player arrow below remains at the player's actual server position.
+        if (config.showFreecamMarker && minecraft.player != null
+                && Dimension.fromLevel(minecraft.player.level().dimension()) == session.dimension()) {
+            FreecamCamera.locate(minecraft).ifPresent(camera -> {
+                int x = (int) Math.round(viewport.worldToScreenX(camera.x()));
+                int z = (int) Math.round(viewport.worldToScreenZ(camera.z()));
+                var matrices = context.pose();
+                matrices.pushMatrix();
+                matrices.translate(x, z);
+                matrices.rotate((float) Math.toRadians(camera.yaw() + 180f));
+                context.blit(RenderPipelines.GUI_TEXTURED, StructureIcons.ARROW,
+                        -8, -8, 0, 0, 16, 16, 16, 16, 0xA6FFFFFF);
+                matrices.popMatrix();
+            });
+        }
         if (minecraft.player != null && Dimension.fromLevel(minecraft.player.level().dimension()) == session.dimension()) {
             int sx = (int) Math.round(viewport.worldToScreenX(minecraft.player.getX()));
             int sy = (int) Math.round(viewport.worldToScreenZ(minecraft.player.getZ()));

@@ -68,6 +68,9 @@ public final class SeedMapSettings extends Screen {
         bool.invoke(builder, "Show waypoint marker",
                 (Supplier<Boolean>) () -> c.showWaypointMarker,
                 (Consumer<Boolean>) v -> c.showWaypointMarker = v);
+        bool.invoke(builder, "Show Freecam camera",
+                (Supplier<Boolean>) () -> c.showFreecamMarker,
+                (Consumer<Boolean>) v -> c.showFreecamMarker = v);
         bool.invoke(builder, "Show facing rays",
                 (Supplier<Boolean>) () -> c.showFacing,
                 (Consumer<Boolean>) v -> c.showFacing = v);
@@ -107,7 +110,7 @@ public final class SeedMapSettings extends Screen {
         int widthPx = Math.min(380, width - 28);
         int x = (width - widthPx) / 2;
         int y = 52;
-        int rowHeight = Math.min(27, Math.max(21, (height - 96) / 6));
+        int rowHeight = Math.min(27, Math.max(21, (height - 96) / 7));
         controls.add(new SegmentedControl(x, 28, widthPx, 21, List.of(
                 SegmentedControl.Segment.of(Component.literal("Map"), () -> page == 0, () -> {
                     page = 0;
@@ -136,6 +139,9 @@ public final class SeedMapSettings extends Screen {
             y += rowHeight;
             toggle("Waypoint marker", () -> config.showWaypointMarker,
                     () -> config.showWaypointMarker = !config.showWaypointMarker, x, y, widthPx);
+            y += rowHeight;
+            toggle("Freecam camera", () -> config.showFreecamMarker,
+                    () -> config.showFreecamMarker = !config.showFreecamMarker, x, y, widthPx);
             y += rowHeight;
             toggle("Facing rays", () -> config.showFacing,
                     () -> config.showFacing = !config.showFacing, x, y, widthPx);

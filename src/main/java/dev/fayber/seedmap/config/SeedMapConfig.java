@@ -30,6 +30,7 @@ public final class SeedMapConfig {
     public boolean showFacing = false;
     public boolean showSpawnMarker = true;
     public boolean showWaypointMarker = true;
+    public boolean showFreecamMarker = true;
     public int markerDensity = 1;
     public int biomeY = 64;
 

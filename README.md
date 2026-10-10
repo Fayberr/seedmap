@@ -11,6 +11,7 @@ Press **M** to open the map. It predicts biomes and structure locations from the
 - Find amethyst geodes, show slime chunks and explore biome Y layers.
 - Search within configurable radii and place waypoints from the results.
 - HUD direction arrow and in-world waypoint beam.
+- Optional translucent Freecam camera arrow, distinct from your real player marker (supports detached camera entities and WI Freecam).
 - Coordinates, distance measurement, chunk grid, spawn marker and PNG export.
 - Background tile generation and on-disk cache.
 - Per-server seed storage. No server mod required.
