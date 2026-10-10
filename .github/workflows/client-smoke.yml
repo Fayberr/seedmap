@@ -23,13 +23,15 @@ jobs:
           distribution: temurin
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v4
+      - name: Install software OpenGL
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libgl1-mesa-dri libglx-mesa0 mesa-utils
       - name: Boot Minecraft under Xvfb
         shell: bash
         run: |
           set +e
           timeout --signal=INT --kill-after=10s 150s \
-            xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX" \
-            env LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe \
+            xvfb-run -a -s "-screen 0 1920x1080x24 +extension GLX +render -noreset" \
+            env LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe MESA_GL_VERSION_OVERRIDE=4.6 \
             ./gradlew runClient --no-daemon --console=plain > client-smoke.log 2>&1
           exit_code=$?
           set -e
@@ -38,7 +40,7 @@ jobs:
             echo "SeedMap did not initialize."
             exit 1
           fi
-          if grep -Eq 'InvalidInjectionException|NoClassDefFoundError|NoSuchMethodError|Crash Report|Exception in thread "Render thread"' client-smoke.log; then
+          if grep -Eq 'InvalidInjectionException|NoClassDefFoundError|NoSuchMethodError|Crash Report|Exception in thread "Render thread"|Failed to create backend|BackendCreationException|Couldn't find matching GLX visual' client-smoke.log; then
             echo "Minecraft reported a startup error."
             exit 1
           fi
