@@ -10,6 +10,7 @@ import dev.fayber.seedmap.map.MapViewport;
 import dev.fayber.seedmap.map.MapWorker;
 import dev.fayber.seedmap.map.MarkerClusterer;
 import dev.fayber.seedmap.map.MarkerVisibility;
+import dev.fayber.seedmap.map.MapPointerGesture;
 import dev.fayber.seedmap.map.TileKey;
 import dev.fayber.seedmap.waypoint.ShareHandler;
 import java.io.IOException;
@@ -83,6 +84,8 @@ public class SeedMapScreen extends Screen {
 
     protected final SeedMapConfig config = SeedMapClient.config();
     private boolean dragging;
+    private final MapPointerGesture mapPointer = new MapPointerGesture();
+    private int featureGroup;
     private EditBox seedField;
     private AbstractButton applyButton;
     private EditBox goField;
@@ -101,6 +104,7 @@ public class SeedMapScreen extends Screen {
     private boolean hasMeasurement;
     private StructureGrid grid;
     private AbstractButton targetButton;
+    private AbstractButton settingsButton;
     private StructurePickerWidget picker;
     private EditBox pickerFilter;
     private AbstractButton searchButton;
@@ -122,7 +126,11 @@ public class SeedMapScreen extends Screen {
     }
 
     private int panelWidth() {
-        return Math.min(260, Math.max(176, width / 3));
+        return Math.min(228, Math.max(176, width / 4));
+    }
+
+    private int headerHeight() {
+        return width < 560 ? 59 : 36;
     }
 
     private int panelX() {
@@ -136,10 +144,9 @@ public class SeedMapScreen extends Screen {
     @Override
     protected void init() {
         viewport.left = 0;
-        viewport.top = HEADER_HEIGHT;
+        viewport.top = headerHeight();
         viewport.width = width - panelWidth();
-        viewport.height = height - HEADER_HEIGHT;
-        viewport.height = height;
+        viewport.height = Math.max(1, height - viewport.top);
         if (!viewportInitialized) {
             centerOnPlayer();
         }
@@ -158,10 +165,10 @@ public class SeedMapScreen extends Screen {
     void buildPanel() {
         int px = panelX();
         int pw = panelW();
-        int y = HEADER_HEIGHT + PAD;
+        int y = headerHeight() + PAD;
         closePicker();
         for (AbstractWidget w : new AbstractWidget[]{
-                seedField, applyButton, goField, goButton, targetButton, searchButton, resultsList}) {
+                seedField, applyButton, goField, goButton, targetButton, searchButton, resultsList, settingsButton}) {
             if (w != null) removeWidget(w);
         }
         seedField = null;
@@ -171,6 +178,7 @@ public class SeedMapScreen extends Screen {
         targetButton = null;
         searchButton = null;
         resultsList = null;
+        settingsButton = null;
         grid = null;
         gridTop = -1;
         hintY = -1;
@@ -178,23 +186,28 @@ public class SeedMapScreen extends Screen {
         searchCaptionY = -1;
         controls.clear();
 
+        // Size the toolbar by labels. Narrow screens use a second row instead of clipping text.
         List<SegmentedControl.Segment> dimensions = new ArrayList<>();
         for (Dimension dimension : Dimension.values()) {
             dimensions.add(SegmentedControl.Segment.of(dimension.displayName(),
                     () -> currentDimension == dimension, () -> switchDimension(dimension)));
         }
-        int dimWidth = Math.max(80, Math.min(158, width - 258));
-        controls.add(new SegmentedControl(84, 8, dimWidth, 16, dimensions));
-        controls.add(new SegmentedControl(width - 166, 8, 160, 16, List.of(
+        int dimensionWidth = 222;
+        controls.add(new SegmentedControl(90, 8, Math.min(dimensionWidth, width - 98), 20, dimensions));
+        int actionsY = width < 560 ? 34 : 8;
+        int actionsX = width - 230;
+        controls.add(new SegmentedControl(actionsX, actionsY, 129, 20, List.of(
                 SegmentedControl.Segment.of(Component.literal("Me"), () -> false, this::centerOnPlayer),
                 SegmentedControl.Segment.of(Component.literal("-"), () -> false,
                         () -> viewport.zoomAt(viewport.left + viewport.width / 2.0,
                                 viewport.top + viewport.height / 2.0, 2.0)),
                 SegmentedControl.Segment.of(Component.literal("+"), () -> false,
                         () -> viewport.zoomAt(viewport.left + viewport.width / 2.0,
-                                viewport.top + viewport.height / 2.0, 0.5)),
-                SegmentedControl.Segment.of(Component.literal("Settings"), () -> false,
-                        () -> minecraft.setScreenAndShow(SeedMapSettings.create(this))))));
+                                viewport.top + viewport.height / 2.0, 0.5)))));
+        settingsButton = new SeedMapButton(actionsX + 135, actionsY, 89, 20,
+                Component.literal("Settings"),
+                () -> minecraft.setScreenAndShow(SeedMapSettings.create(this)));
+        addRenderableWidget(settingsButton);
 
         controls.add(new SegmentedControl(px, y, pw, 18, List.of(
                 SegmentedControl.Segment.of(Component.literal("Search"), () -> sidebarTab == 0,
@@ -491,7 +504,7 @@ public class SeedMapScreen extends Screen {
         }
         int w = 200;
         int x = width - panelWidth() - w - 8;
-        int y = PAD;
+        int y = headerHeight() + PAD;
         int h = Math.min(300, height - y - 10);
         pickerFilter = new EditBox(font, x, y, w, BTN_H, Component.translatable("seedmap.screen.filter"));
         pickerFilter.setHint(Component.translatable("seedmap.screen.filter"));
@@ -736,12 +749,12 @@ public class SeedMapScreen extends Screen {
         renderMapOverlays(context, mouseX, mouseY);
         int px = panelX();
         int pw = panelW();
-        SeedMapUi.panel(context, width - panelWidth(), HEADER_HEIGHT, panelWidth(), height - HEADER_HEIGHT,
+        SeedMapUi.panel(context, width - panelWidth(), headerHeight(), panelWidth(), height - headerHeight(),
                 0, PANEL);
-        context.fill(width - panelWidth(), HEADER_HEIGHT, width - panelWidth() + 1, height, PANEL_EDGE);
-        SeedMapUi.panel(context, 0, 0, width, HEADER_HEIGHT, 0, PANEL);
-        context.fill(0, HEADER_HEIGHT - 1, width, HEADER_HEIGHT, SEPARATOR);
-        context.text(font, SeedMapUi.text("SEEDMAP"), 10, 11, TEXT, false);
+        context.fill(width - panelWidth(), headerHeight(), width - panelWidth() + 1, height, PANEL_EDGE);
+        SeedMapUi.panel(context, 0, 0, width, headerHeight(), 0, PANEL);
+        context.fill(0, headerHeight() - 1, width, headerHeight(), SEPARATOR);
+        context.text(font, SeedMapUi.text("SEEDMAP"), 10, 13, TEXT, false);
         if (grid != null) {
             context.text(font, Component.translatable("seedmap.screen.structures"), px, gridTop - 10, MUTED, false);
             grid.render(context, font, mouseX, mouseY);
@@ -774,7 +787,7 @@ public class SeedMapScreen extends Screen {
     }
 
     private void renderHover(GuiGraphicsExtractor context, int mouseX, int mouseY) {
-        if (session == null || !viewport.contains(mouseX, mouseY) || dragging || measuring) return;
+        if (session == null || !viewport.contains(mouseX, mouseY) || mapPointer.isPressed() || dragging || measuring) return;
         int bx = (int) Math.floor(viewport.screenToWorldX(mouseX));
         int bz = (int) Math.floor(viewport.screenToWorldZ(mouseY));
         List<String> lines = new ArrayList<>();
@@ -1156,20 +1169,11 @@ public class SeedMapScreen extends Screen {
             return true;
         }
         if (click.button() == 1) {
+            // Do not activate map markers on mouse-down: a drag can start on any icon.
             hasMeasurement = false;
-            boolean dots = !MarkerVisibility.iconAt(viewport.scale, config.markerDensity);
-            MarkerClusterer.Cluster<MapMarker> cluster = clusterAt(click.x(), click.y());
-            if (cluster != null) {
-                if (cluster.size() > 1 || dots) {
-                    viewport.zoomAt(cluster.x(), cluster.y(), cluster.size() > 1 ? 0.35 : 0.5);
-                    return true;
-                }
-                MapMarker marker = cluster.members().get(0);
-                WaypointState.set(new Waypoint(StructureIcons.displayName(marker.id()), marker.blockX(), marker.blockZ(),
-                        marker.id(), session.dimension().levelId()));
-                onClose();
-                return true;
-            }
+            mapPointer.press(click.x(), click.y());
+            dragging = false;
+            return true;
         }
         if (click.button() == 3) {
             MarkerClusterer.Cluster<MapMarker> cluster = clusterAt(click.x(), click.y());
@@ -1184,16 +1188,31 @@ public class SeedMapScreen extends Screen {
             openPointMenu((int) click.x(), (int) click.y(), bx, bz);
             return true;
         }
-        if (click.button() == 1) {
-            dragging = true;
-            return true;
-        }
         return false;
     }
 
     @Override
     public boolean mouseReleased(MouseButtonEvent click) {
-        dragging = false;
+        if (click.button() == 1 && mapPointer.isPressed()) {
+            boolean wasClick = mapPointer.release(click.x(), click.y());
+            dragging = false;
+            if (wasClick && viewport.contains(click.x(), click.y()) && session != null) {
+                MarkerClusterer.Cluster<MapMarker> cluster = clusterAt(click.x(), click.y());
+                if (cluster != null) {
+                    boolean dots = !MarkerVisibility.iconAt(viewport.scale, config.markerDensity);
+                    if (cluster.size() > 1 || dots) {
+                        viewport.zoomAt(cluster.x(), cluster.y(),
+                                cluster.size() > 1 ? 0.35 : 0.5);
+                    } else {
+                        MapMarker marker = cluster.members().get(0);
+                        WaypointState.set(new Waypoint(StructureIcons.displayName(marker.id()),
+                                marker.blockX(), marker.blockZ(), marker.id(), session.dimension().levelId()));
+                        onClose();
+                    }
+                }
+            }
+            return true;
+        }
         measuring = false;
         return super.mouseReleased(click);
     }
@@ -1205,8 +1224,9 @@ public class SeedMapScreen extends Screen {
             measureEndZ = viewport.screenToWorldZ(click.y());
             return true;
         }
-        if (dragging && click.button() == 1) {
-            viewport.pan(offsetX, offsetY);
+        if (click.button() == 1 && mapPointer.isPressed()) {
+            dragging = mapPointer.move(click.x(), click.y());
+            if (dragging) viewport.pan(offsetX, offsetY);
             return true;
         }
         return super.mouseDragged(click, offsetX, offsetY);
