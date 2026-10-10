@@ -3,6 +3,8 @@ package dev.fayber.seedmap;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.fayber.seedmap.config.SeedMapConfig;
 import dev.fayber.seedmap.gui.SeedMapScreen;
+import dev.fayber.seedmap.gui.IconSilhouette;
+import dev.fayber.seedmap.gui.StructureIcons;
 import dev.fayber.seedmap.map.MapWorker;
 import dev.fayber.seedmap.waypoint.BeamRenderer;
 import dev.fayber.seedmap.waypoint.HudArrowRenderer;
@@ -15,6 +17,10 @@ import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
+import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
+import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
+import net.minecraft.server.packs.PackType;
+import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.resources.Identifier;
 import org.lwjgl.sdl.SDLScancode;
@@ -44,6 +50,22 @@ public final class SeedMapClient implements ClientModInitializer {
     public void onInitializeClient() {
         config = SeedMapConfig.load(SeedMapConfig.DEFAULT_PATH);
         KeyMappingHelper.registerKeyMapping(OPEN_MAP);
+        ResourceManagerHelper.get(PackType.CLIENT_RESOURCES)
+                .registerReloadListener(new SimpleSynchronousResourceReloadListener() {
+                    @Override
+                    public Identifier getFabricId() {
+                        return Identifier.fromNamespaceAndPath(MOD_ID, "icon_outlines");
+                    }
+
+                    @Override
+                    public void reload(ResourceManager manager) {
+                        // TextureManager is owned by the client thread.
+                        net.minecraft.client.Minecraft.getInstance().execute(() -> {
+                            IconSilhouette.clearCache();
+                            StructureIcons.clearIconCache();
+                        });
+                    }
+                });
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath(MOD_ID, "waypoint_arrow"), HudArrowRenderer::render);
 
         BeamRenderer.init();

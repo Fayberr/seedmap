@@ -72,6 +72,10 @@ public final class StructureIcons {
         ITEMS.put(Identifier.withDefaultNamespace(structurePath), item);
     }
 
+    public static void clearIconCache() {
+        ICON_CACHE.clear();
+    }
+
     public static Identifier iconFor(Identifier structureId) {
         return ICON_CACHE.computeIfAbsent(structureId, id -> {
             Identifier candidate = Identifier.fromNamespaceAndPath(SeedMapClient.MOD_ID, "textures/gui/icons/" + id.getPath() + ".png");
