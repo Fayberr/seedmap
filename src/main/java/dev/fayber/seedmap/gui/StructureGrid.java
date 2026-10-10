@@ -11,10 +11,10 @@ import net.minecraft.resources.Identifier;
 
 public final class StructureGrid {
     public static final int CELL = 22;
-    private static final int ON = 0xFF3A7BD5;
-    private static final int OFF = 0xFF1A2027;
+    private static final int ON = 0xFF262626;
+    private static final int OFF = 0xFF1A1A1A;
     private static final int DIM = 0x99000000;
-    private static final int TARGET = 0xFFFFD700;
+    private static final int TARGET = 0xFF7AA2F7;
 
     private final int x;
     private final int y;
@@ -74,7 +74,7 @@ public final class StructureGrid {
     }
 
     public boolean mouseClicked(double mx, double my, int button) {
-        if (button != 0 && button != 1) return false;
+        if (button != 1 && button != 3) return false;
         if (mx < x || my < y || mx >= x + columns * CELL || my >= y + height()) return false;
         int col = (int) ((mx - x) / CELL);
         int row = (int) ((my - y) / CELL);
