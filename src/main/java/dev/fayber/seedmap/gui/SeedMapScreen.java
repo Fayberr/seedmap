@@ -274,20 +274,32 @@ public class SeedMapScreen extends Screen {
             addRenderableWidget(resultsList);
             refreshList();
         } else if (sidebarTab == 1) {
+            controls.add(new SegmentedControl(px, y, pw, 18, List.of(
+                    SegmentedControl.Segment.of(Component.literal("Landmarks"),
+                            () -> featureGroup == 0, () -> { featureGroup = 0; buildPanel(); }),
+                    SegmentedControl.Segment.of(Component.literal("Common"),
+                            () -> featureGroup == 1, () -> { featureGroup = 1; buildPanel(); }),
+                    SegmentedControl.Segment.of(Component.literal("All types"),
+                            () -> featureGroup == 2, () -> { featureGroup = 2; buildPanel(); }))));
+            y += 18 + GAP + 7;
             if (session != null) {
-                gridTop = y + 4;
-                int visibleRows = Math.max(2, Math.min(6,
-                        (statusY - gridTop - 18) / StructureGrid.CELL));
+                List<Identifier> visibleIds = structureIds.stream()
+                        .filter(id -> featureGroup == 2
+                                || (featureGroup == 0) == MarkerVisibility.isLandmark(id))
+                        .toList();
+                gridTop = y + 13;
+                int visibleRows = Math.max(2, Math.min(8,
+                        (statusY - gridTop - 24) / StructureGrid.CELL));
                 grid = new StructureGrid(px, gridTop, Math.max(1, pw / StructureGrid.CELL),
-                        structureIds, session.enabledStructures(), this::saveToggles,
+                        visibleIds, session.enabledStructures(), this::saveToggles,
                         id -> { setBiomeMode(false); selectTarget(id); },
                         () -> biomeMode ? null : lastStructure, visibleRows);
-                controls.add(new SegmentedControl(px + pw - 74, y - 1, 74, 12, List.of(
+                controls.add(new SegmentedControl(px + pw - 74, y - 2, 74, 12, List.of(
                         SegmentedControl.Segment.of(Component.translatable("seedmap.screen.all"),
                                 () -> false, () -> grid.setAll(true)),
                         SegmentedControl.Segment.of(Component.translatable("seedmap.screen.none"),
                                 () -> false, () -> grid.setAll(false)))));
-                hintY = Math.min(gridTop + grid.height() + 4, statusY - 10);
+                hintY = Math.min(gridTop + grid.height() + 7, statusY - 10);
             }
         } else {
             boolean singleplayer = minecraft.getSingleplayerServer() != null;
@@ -758,7 +770,7 @@ public class SeedMapScreen extends Screen {
         if (grid != null) {
             context.text(font, Component.translatable("seedmap.screen.structures"), px, gridTop - 10, MUTED, false);
             grid.render(context, font, mouseX, mouseY);
-            context.text(font, Component.translatable("seedmap.screen.grid_hint"), px, hintY, MUTED, false);
+            context.text(font, SeedMapUi.text("Click to toggle  ·  Right click to find"), px, hintY, MUTED, false);
         }
         if (layerLabelY >= 0) {
             context.text(font, Component.translatable("seedmap.screen.biome_y"), px, layerLabelY, MUTED, false);
