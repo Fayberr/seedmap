@@ -16,7 +16,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(GuiRenderState.class)
 public abstract class GuiRenderStateCaptureMixin {
-    @Inject(method = "addItem", at = @At("HEAD"))
+    @Inject(method = "addItem", at = @At("TAIL"))
     private void seedmap$trackItem(GuiItemRenderState item, CallbackInfo ci) {
         RenderedItemCapture.onItemQueued(item);
     }

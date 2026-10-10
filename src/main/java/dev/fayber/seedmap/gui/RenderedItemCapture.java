@@ -7,7 +7,9 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import dev.fayber.seedmap.SeedMapClient;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.render.GuiItemAtlas;
@@ -38,9 +40,12 @@ public final class RenderedItemCapture {
     private static final Map<Identifier, GuiItemRenderState> LAST_TARGET = new HashMap<>();
     private static final Map<Identifier, BufferedImage> IMAGES = new HashMap<>();
     private static final Map<Identifier, Pending> PENDING = new LinkedHashMap<>();
-    private static final Map<Identifier, Boolean> IN_FLIGHT = new HashMap<>();
+    private static final Map<Identifier, Integer> IN_FLIGHT = new HashMap<>();
     private static final Map<Identifier, Integer> RETRY_AFTER = new HashMap<>();
     private static final Map<Identifier, Integer> FAILURES = new HashMap<>();
+    // One line per structure/stage per resource-pack generation; never per marker/frame.
+    private static final Set<String> DIAGNOSTICS = new HashSet<>();
+    private static final Map<Identifier, Integer> FIRST_QUEUED = new HashMap<>();
     private static int epoch;
     private static int frame;
     private static Identifier extractingStructure;
@@ -69,10 +74,14 @@ public final class RenderedItemCapture {
     /** Mixin into GuiRenderState.addItem: this is the exact state the renderer later uses. */
     public static void onItemQueued(GuiItemRenderState item) {
         Identifier structure = extractingStructure;
-        if (structure == null) return;
-        GuiItemRenderState previous = LAST_TARGET.put(structure, item);
-        if (previous != null) TARGETS.remove(previous);
+        // The old "latest marker wins" rule regularly selected a culled or
+        // clipped last copy. Retain the FIRST visible item for this structure.
+        if (structure == null || item.bounds() == null
+                || LAST_TARGET.containsKey(structure)) return;
+        LAST_TARGET.put(structure, item);
         TARGETS.put(item, new Request(structure, epoch));
+        FIRST_QUEUED.putIfAbsent(structure, frame);
+        logOnce(structure, "queued", "registered first visible GUI item state");
     }
 
     /** Do not clear targets from GuiRenderState.reset: the renderer may not
@@ -85,7 +94,9 @@ public final class RenderedItemCapture {
 
     /** Minecraft's normal cached GUI-item atlas. */
     public static void onResolved(GuiItemRenderState item, GuiItemAtlas.SlotView slot) {
-        if (!TARGETS.containsKey(item)) return;
+        Request request = TARGETS.get(item);
+        if (request == null) return;
+        logOnce(request.structure(), "atlas", "matched vanilla item atlas slot");
         int atlasWidth = slot.textureView().getWidth(0);
         int atlasHeight = slot.textureView().getHeight(0);
         int x = Math.round(Math.min(slot.u0(), slot.u1()) * atlasWidth);
@@ -104,6 +115,7 @@ public final class RenderedItemCapture {
                                            com.mojang.renderpearl.api.textures.GpuTexture texture,
                                            int x0, int y0, int x1, int y1) {
         if (texture == null || !TARGETS.containsKey(item)) return;
+        logOnce(TARGETS.get(item).structure(), "pip", "matched oversized 3D item texture");
         int physicalScale = Math.max(1, Math.round(
                 texture.getWidth(0) / (float) Math.max(1, x1 - x0)));
         int size = Math.clamp(16 * physicalScale, 16, 256);
@@ -133,11 +145,29 @@ public final class RenderedItemCapture {
         // elements. Never issue the copy here: hold the texture and region
         // until the final GUI render pass has finished.
         PENDING.put(structure, new Pending(structure, epoch, texture, x, y, w, h, flipY));
+        logOnce(structure, "pending", "queued " + w + "x" + h
+                + " region for GPU readback" + (flipY ? " (PIP)" : " (atlas)"));
     }
 
     /** Invoked from GuiRenderer.render(TAIL), after the GUI render pass closes. */
     public static void onFrameRendered() {
         frame++;
+        if (frame % 120 == 0) {
+            for (var entry : FIRST_QUEUED.entrySet()) {
+                Identifier structure = entry.getKey();
+                if (IMAGES.containsKey(structure)) continue;
+                if (frame - entry.getValue() >= 120) {
+                    if (IN_FLIGHT.containsKey(structure)) {
+                        logOnce(structure, "stalled", "GPU readback callback has not completed for "
+                                + (frame - IN_FLIGHT.get(structure)) + " frames");
+                    } else if (!DIAGNOSTICS.contains(structure + "|atlas")
+                            && !DIAGNOSTICS.contains(structure + "|pip")) {
+                        logOnce(structure, "missing", "GUI item state was queued but did not "
+                                + "match any rendered atlas or picture-in-picture item");
+                    }
+                }
+            }
+        }
         try {
             var iterator = PENDING.values().iterator();
             while (iterator.hasNext() && IN_FLIGHT.size() < MAX_IN_FLIGHT) {
@@ -168,7 +198,8 @@ public final class RenderedItemCapture {
             failed(structure, "Could not allocate readback buffer", error);
             return;
         }
-        IN_FLIGHT.put(structure, Boolean.TRUE);
+        IN_FLIGHT.put(structure, frame);
+        logOnce(structure, "copy", "submitting GPU copy for item silhouette");
         try {
             RenderSystem.getDevice().createCommandEncoder().copyTextureToBuffer(
                     pending.texture(), staging, 0L,
@@ -197,6 +228,8 @@ public final class RenderedItemCapture {
                 return;
             }
             IMAGES.put(structure, rendered);
+            logOnce(structure, "complete", "GPU alpha readback succeeded; "
+                    + rendered.getWidth() + "x" + rendered.getHeight());
             RETRY_AFTER.remove(structure);
             FAILURES.remove(structure);
             // The previous absence was cached: allow the next frame to bake a
@@ -207,6 +240,12 @@ public final class RenderedItemCapture {
         } finally {
             if (generation == epoch) IN_FLIGHT.remove(structure);
             staging.close();
+        }
+    }
+
+    private static void logOnce(Identifier structure, String stage, String message) {
+        if (DIAGNOSTICS.add(structure + "|" + stage)) {
+            SeedMapClient.LOGGER.info("SeedMap outline [{}] {}: {}", stage, structure, message);
         }
     }
 
@@ -252,6 +291,8 @@ public final class RenderedItemCapture {
         IN_FLIGHT.clear();
         RETRY_AFTER.clear();
         FAILURES.clear();
+        DIAGNOSTICS.clear();
+        FIRST_QUEUED.clear();
         frame = 0;
     }
 }
