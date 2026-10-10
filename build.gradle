@@ -37,7 +37,11 @@ java {
 test {
     useJUnitPlatform()
     maxHeapSize = '3G'
-    testLogging { events 'passed', 'failed', 'skipped'; exceptionFormat 'full' }
+    testLogging {
+        events 'passed', 'failed', 'skipped'
+        exceptionFormat 'full'
+        showStandardStreams = true
+    }
 }
 jar {
     from('LICENSE') { rename { "${it}_${project.base.archivesName.get()}" } }
