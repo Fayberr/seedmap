@@ -106,22 +106,13 @@ public final class RenderedItemCapture {
                                         GpuBuffer staging, int width, int height) {
         try {
             if (generation != epoch) return;
-            BufferedImage rendered = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            BufferedImage rendered;
             try (var mapped = staging.map(true, false)) {
-                ByteBuffer pixels = mapped.data();
-                if (pixels.remaining() < width * height * 4) return;
-                int count = 0;
-                for (int y = 0; y < height; y++) {
-                    for (int x = 0; x < width; x++) {
-                        int alpha = pixels.get((y * width + x) * 4 + 3) & 0xFF;
-                        if (alpha != 0) count++;
-                        rendered.setRGB(x, y, alpha << 24 | 0xFFFFFF);
-                    }
-                }
-                if (count == 0) {
-                    UNSUPPORTED.add(structure);
-                    return;
-                }
+                rendered = decodeAlpha(mapped.data(), width, height);
+            }
+            if (rendered == null) {
+                UNSUPPORTED.add(structure);
+                return;
             }
             IMAGES.put(structure, rendered);
             // The previous absence was cached: allow the next frame to bake a
@@ -133,6 +124,23 @@ public final class RenderedItemCapture {
             IN_FLIGHT.remove(structure);
             staging.close();
         }
+    }
+
+    /** Decodes only the alpha of the RGBA item-atlas GPU readback. */
+    static BufferedImage decodeAlpha(ByteBuffer rgba, int width, int height) {
+        if (rgba == null || width <= 0 || height <= 0 || width > 256 || height > 256
+                || rgba.remaining() < width * height * 4) return null;
+        BufferedImage mask = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        int offset = rgba.position();
+        boolean hasPixels = false;
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int alpha = rgba.get(offset + (y * width + x) * 4 + 3) & 0xFF;
+                if (alpha != 0) hasPixels = true;
+                mask.setRGB(x, y, (alpha << 24) | 0xFFFFFF);
+            }
+        }
+        return hasPixels ? mask : null;
     }
 
     public static void clear() {
