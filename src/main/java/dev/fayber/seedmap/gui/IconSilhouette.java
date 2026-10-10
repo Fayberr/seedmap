@@ -1,106 +1,138 @@
 package dev.fayber.seedmap.gui;
 
+import com.mojang.blaze3d.platform.NativeImage;
+import dev.fayber.seedmap.SeedMapClient;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.List;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import javax.imageio.ImageIO;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.world.item.Item;
 
 /**
- * Silhouette-following outlines, sampled from the actual alpha of map icons.
+ * Caches an alpha-silhouette as one small GPU texture per structure and GUI scale.
+ * The previous renderer submitted thousands of fill calls per icon every frame.
  *
- * Generates a smoothed contour from the PNG's transparency once per structure
- * type, then draws a thin white physical-pixel stroke. Unlike a card border,
- * it never encloses transparent corners of round icons such as the Ender Eye.
+ * The alpha sources are read from Minecraft's live resource manager, so custom
+ * PNGs replaced by a resource pack are automatically picked up after reload.
+ * 3D custom item models do not necessarily match a flat item PNG; for these a
+ * render-to-texture capture will be required for pixel-perfect model outlines.
  */
 public final class IconSilhouette {
-    private static final Map<Identifier, Optional<List<SilhouetteContour.Segment>>> CACHE = new HashMap<>();
-    private static final int WHITE = 0xEDFFFFFF;
-    private static final int GLOW = 0x45FFFFFF;
+    private record Entry(Identifier texture, int side, int guiScale) {}
+    private record Key(Identifier structure, int scale) {}
+
+    private static final Map<Key, Optional<Entry>> CACHE = new HashMap<>();
+    private static ResourceManager lastResources;
+    private static int generation;
 
     private IconSilhouette() {}
 
-    public static void draw(GuiGraphicsExtractor gfx, Identifier structure, int x, int y,
+    public static void draw(GuiGraphicsExtractor graphics, Identifier structure, int x, int y,
                             Identifier customPng, String mapSprite, Item item) {
         if (structure == null) return;
-        Optional<List<SilhouetteContour.Segment>> segments =
-                CACHE.computeIfAbsent(structure, ignored -> load(customPng, mapSprite, item));
-        if (segments.isEmpty()) return;
-        float scale = Minecraft.getInstance().getWindow() == null
-                ? 1f : (float) Minecraft.getInstance().getWindow().getGuiScale();
-        gfx.pose().pushMatrix();
-        // Physical-pixel drawing instead of GUI-scale rectangles: lines remain thin
-        // and smooth at GUI scales 2–6, with no dependency on Modern GUI.
-        gfx.pose().scale(1f / scale, 1f / scale);
-        for (SilhouetteContour.Segment segment : segments.get()) {
-            float x1 = (x + segment.x1()) * scale;
-            float y1 = (y + segment.y1()) * scale;
-            float x2 = (x + segment.x2()) * scale;
-            float y2 = (y + segment.y2()) * scale;
-            float dx = x2 - x1;
-            float dy = y2 - y1;
-            int steps = Math.max(1, (int) Math.ceil(Math.hypot(dx, dy) * 1.25));
-            for (int k = 0; k <= steps; k++) {
-                float f = k / (float) steps;
-                int px = Math.round(x1 + dx * f);
-                int py = Math.round(y1 + dy * f);
-                gfx.fill(px - 1, py - 1, px + 2, py + 2, GLOW);
-                gfx.fill(px, py, px + 1, py + 1, WHITE);
-            }
+        Minecraft client = Minecraft.getInstance();
+        if (client.getWindow() == null) return;
+        ResourceManager manager = client.getResourceManager();
+        if (manager != lastResources) {
+            clearCache();
+            lastResources = manager;
         }
-        gfx.pose().popMatrix();
+
+        int scale = Math.clamp((int) Math.round(client.getWindow().getGuiScale()), 1, 8);
+        Key key = new Key(structure, scale);
+        Optional<Entry> cached = CACHE.computeIfAbsent(key,
+                unused -> makeTexture(client, manager, structure, scale, customPng, mapSprite, item));
+        if (cached.isEmpty()) return;
+        Entry entry = cached.get();
+
+        // One textured draw instead of hundreds/thousands of rectangles per icon.
+        // The cached texture contains a constant-width physical-pixel outline.
+        graphics.pose().pushMatrix();
+        graphics.pose().scale(1f / scale, 1f / scale);
+        graphics.blit(RenderPipelines.GUI_TEXTURED, entry.texture(),
+                (x - SilhouetteRaster.MARGIN) * scale,
+                (y - SilhouetteRaster.MARGIN) * scale,
+                0, 0, entry.side(), entry.side(),
+                entry.side(), entry.side());
+        graphics.pose().popMatrix();
     }
 
-    private static Optional<List<SilhouetteContour.Segment>> load(
-            Identifier customPng, String mapSprite, Item item) {
-        // Explicit custom icon has priority, since its alpha matches exactly
-        // what is rendered on screen.
-        if (customPng != null) {
-            Optional<List<SilhouetteContour.Segment>> custom = read(customPng);
-            if (custom.isPresent()) return custom;
+    private static Optional<Entry> makeTexture(Minecraft client, ResourceManager manager,
+                    Identifier structure, int guiScale, Identifier customPng,
+                    String mapSprite, Item item) {
+        BufferedImage source = null;
+        if (customPng != null) source = load(manager, customPng);
+        if (source == null && mapSprite != null) {
+            source = load(manager, Identifier.fromNamespaceAndPath("minecraft",
+                    "textures/map/decorations/" + mapSprite + ".png"));
         }
-        if (mapSprite != null) {
-            var spriteTexture = Identifier.fromNamespaceAndPath("minecraft",
-                    "textures/map/decorations/" + mapSprite + ".png");
-            Optional<List<SilhouetteContour.Segment>> sprite = read(spriteTexture);
-            if (sprite.isPresent()) return sprite;
-        }
-        if (item != null) {
+        if (source == null && item != null) {
             Identifier key = BuiltInRegistries.ITEM.getKey(item);
-            Identifier texture = Identifier.fromNamespaceAndPath(key.getNamespace(),
-                    "textures/item/" + key.getPath() + ".png");
-            Optional<List<SilhouetteContour.Segment>> sprite = read(texture);
-            if (sprite.isPresent()) return sprite;
+            source = load(manager, Identifier.fromNamespaceAndPath(key.getNamespace(),
+                    "textures/item/" + key.getPath() + ".png"));
         }
-        return Optional.empty();
-    }
+        if (source == null) return Optional.empty();
 
-    private static Optional<List<SilhouetteContour.Segment>> read(Identifier path) {
-        try {
-            var resource = Minecraft.getInstance().getResourceManager().getResource(path);
-            if (resource.isEmpty()) return Optional.empty();
-            try (InputStream input = resource.get().open()) {
-                BufferedImage image = ImageIO.read(input);
-                if (image == null || image.getWidth() > 512 || image.getHeight() > 512) {
-                    return Optional.empty();
-                }
-                List<SilhouetteContour.Segment> contour = SilhouetteContour.trace(image);
-                return contour.isEmpty() ? Optional.empty() : Optional.of(contour);
+        int[] outline = SilhouetteRaster.rasterize(source, guiScale);
+        boolean hasPixels = false;
+        for (int pixel : outline) {
+            if ((pixel >>> 24) != 0) { hasPixels = true; break; }
+        }
+        if (!hasPixels) return Optional.empty();
+
+        int side = SilhouetteRaster.SIZE * guiScale;
+        NativeImage nativeImage = new NativeImage(side, side, false);
+        for (int py = 0; py < side; py++) {
+            for (int px = 0; px < side; px++) {
+                nativeImage.setPixel(px, py, outline[py * side + px]);
             }
-        } catch (IOException | RuntimeException ignored) {
+        }
+        Identifier id = Identifier.fromNamespaceAndPath(SeedMapClient.MOD_ID,
+                "dynamic/outline/" + generation + "/" + guiScale + "/"
+                        + Integer.toHexString(structure.toString().hashCode()));
+        try {
+            client.getTextureManager().register(id, new DynamicTexture(id::toString, nativeImage));
+            return Optional.of(new Entry(id, side, guiScale));
+        } catch (RuntimeException exception) {
+            nativeImage.close();
+            SeedMapClient.LOGGER.warn("Failed to cache icon outline for {}", structure, exception);
             return Optional.empty();
         }
     }
 
+    private static BufferedImage load(ResourceManager manager, Identifier path) {
+        try {
+            var resource = manager.getResource(path);
+            if (resource.isEmpty()) return null;
+            try (InputStream stream = resource.get().open()) {
+                BufferedImage image = ImageIO.read(stream);
+                if (image == null || image.getWidth() < 1 || image.getHeight() < 1
+                        || image.getWidth() > 512 || image.getHeight() > 512) return null;
+                return image;
+            }
+        } catch (IOException | RuntimeException exception) {
+            return null;
+        }
+    }
+
+    /** Resource packs, game restarts and GUI scale changes must never use stale silhouettes. */
     public static void clearCache() {
+        Minecraft client = Minecraft.getInstance();
+        for (Optional<Entry> cached : CACHE.values()) {
+            if (cached.isPresent()) client.getTextureManager().release(cached.get().texture());
+        }
         CACHE.clear();
+        generation++;
+        lastResources = null;
     }
 }
