@@ -12,6 +12,8 @@ class MarkerVisibilityTest {
         assertTrue(MarkerVisibility.visible(id("stronghold"), 128, MarkerVisibility.BALANCED));
         assertTrue(MarkerVisibility.visible(id("ancient_city"), 128, MarkerVisibility.BALANCED));
         assertFalse(MarkerVisibility.visible(id("trial_chambers"), 64, MarkerVisibility.BALANCED));
+        assertFalse(MarkerVisibility.visible(id("trial_chambers"), 16, MarkerVisibility.BALANCED));
+        assertTrue(MarkerVisibility.visible(id("trial_chambers"), 8, MarkerVisibility.BALANCED));
         assertFalse(MarkerVisibility.visible(id("village_plains"), 64, MarkerVisibility.BALANCED));
     }
 

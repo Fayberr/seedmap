@@ -275,11 +275,11 @@ public class SeedMapScreen extends Screen {
             refreshList();
         } else if (sidebarTab == 1) {
             controls.add(new SegmentedControl(px, y, pw, 18, List.of(
-                    SegmentedControl.Segment.of(Component.literal("Landmarks"),
+                    SegmentedControl.Segment.of(Component.literal("Major"),
                             () -> featureGroup == 0, () -> { featureGroup = 0; buildPanel(); }),
                     SegmentedControl.Segment.of(Component.literal("Common"),
                             () -> featureGroup == 1, () -> { featureGroup = 1; buildPanel(); }),
-                    SegmentedControl.Segment.of(Component.literal("All types"),
+                    SegmentedControl.Segment.of(Component.literal("All"),
                             () -> featureGroup == 2, () -> { featureGroup = 2; buildPanel(); }))));
             y += 18 + GAP + 7;
             if (session != null) {
@@ -770,7 +770,7 @@ public class SeedMapScreen extends Screen {
         if (grid != null) {
             context.text(font, Component.translatable("seedmap.screen.structures"), px, gridTop - 10, MUTED, false);
             grid.render(context, font, mouseX, mouseY);
-            context.text(font, SeedMapUi.text("Click to toggle  ·  Right click to find"), px, hintY, MUTED, false);
+            context.text(font, SeedMapUi.text("Click: toggle  ·  Right: find"), px, hintY, MUTED, false);
         }
         if (layerLabelY >= 0) {
             context.text(font, Component.translatable("seedmap.screen.biome_y"), px, layerLabelY, MUTED, false);

@@ -64,6 +64,18 @@ class MapViewportTest {
     }
 
     @Test
+    void headerInsetKeepsMapCoordinatesAlignedWithVisibleMap() {
+        MapViewport viewport = viewport();
+        viewport.top = 36;
+        viewport.height = 400 - viewport.top;
+        viewport.centerX = 512;
+        viewport.centerZ = -400;
+        assertEquals(512, viewport.screenToWorldX(viewport.left + viewport.width / 2.0), 1e-9);
+        assertEquals(-400, viewport.screenToWorldZ(viewport.top + viewport.height / 2.0), 1e-9);
+        assertEquals(viewport.top + viewport.height / 2.0, viewport.worldToScreenZ(-400), 1e-9);
+    }
+
+    @Test
     void blockBoundsAndLod() {
         MapViewport v = viewport();
         assertEquals(-400, v.minBlockX());
