@@ -21,6 +21,26 @@ class RenderedItemCaptureTest {
         assertEquals(0, mask.getRGB(3, 3) >>> 24);
     }
 
+    @Test void flipsOversizedPictureInPictureAlphaVertically() {
+        ByteBuffer pixels = ByteBuffer.allocate(2 * 2 * 4);
+        // Top GPU row contains one pixel; the displayed PIP is vertically flipped.
+        for (int i = 0; i < 4; i++) {
+            pixels.put((byte) 0).put((byte) 0).put((byte) 0);
+            pixels.put((byte) (i == 0 ? 255 : 0));
+        }
+        pixels.flip();
+        BufferedImageAssert.assertPixelAlpha(RenderedItemCapture.decodeAlpha(pixels, 2, 2, true), 0, 1, 255);
+        BufferedImageAssert.assertPixelAlpha(RenderedItemCapture.decodeAlpha(pixels, 2, 2, true), 0, 0, 0);
+        BufferedImageAssert.assertPixelAlpha(RenderedItemCapture.decodeAlpha(pixels, 2, 2, false), 0, 0, 255);
+    }
+
+    private static final class BufferedImageAssert {
+        static void assertPixelAlpha(java.awt.image.BufferedImage image, int x, int y, int alpha) {
+            assertNotNull(image);
+            assertEquals(alpha, image.getRGB(x, y) >>> 24);
+        }
+    }
+
     @Test void doesNotAcceptTransparentOrIncompleteReadbacks() {
         assertNull(RenderedItemCapture.decodeAlpha(ByteBuffer.allocate(64), 4, 4));
         assertNull(RenderedItemCapture.decodeAlpha(ByteBuffer.allocate(30), 4, 4));

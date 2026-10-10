@@ -24,8 +24,8 @@ import net.minecraft.world.item.Item;
  *
  * The alpha sources are read from Minecraft's live resource manager, so custom
  * PNGs replaced by a resource pack are automatically picked up after reload.
- * 3D custom item models do not necessarily match a flat item PNG; for these a
- * render-to-texture capture will be required for pixel-perfect model outlines.
+ * Flat items can use their resolved resource-pack PNGs immediately.
+ * For 3D models, the actual rendered GUI-item alpha is captured and cached.
  */
 public final class IconSilhouette {
     private record Entry(Identifier texture, int side, int guiScale) {}
@@ -49,13 +49,8 @@ public final class IconSilhouette {
         }
 
         int scale = Math.clamp((int) Math.round(client.getWindow().getGuiScale()), 1, 8);
-        // Ask Minecraft for the silhouette of the *rendered* item; the first
-        // appearance simply has no outline until the one-off atlas readback
-        // completes. No per-frame copies occur after caching.
-        if (item != null && customPng == null && mapSprite == null
-                && RenderedItemCapture.cached(structure) == null) {
-            RenderedItemCapture.request(structure, x, y);
-        }
+        // A 3D model's one-off GPU capture is registered around the
+        // subsequent context.item() call by StructureIcons.
         Key key = new Key(structure, scale);
         Optional<Entry> cached = CACHE.computeIfAbsent(key,
                 unused -> makeTexture(client, manager, structure, scale, customPng, mapSprite, item));
@@ -84,10 +79,15 @@ public final class IconSilhouette {
                     "textures/map/decorations/" + mapSprite + ".png"));
         }
         if (source == null && item != null) {
-            // This mask comes from the actual GUI item atlas, so model geometry,
-            // transforms, resource packs and lighting already match the icon.
-            // Do not substitute a guessed PNG for custom 3D items.
+            // Prefer the rendered model alpha. Flat generated/handheld items
+            // have an exact PNG silhouette without needing a GPU readback.
+            // 3D models deliberately have no guessed square fallback.
             source = RenderedItemCapture.cached(structure);
+            if (source == null) {
+                ItemModelTexture.Result flat = ItemModelTexture.resolve(
+                        manager, BuiltInRegistries.ITEM.getKey(item));
+                if (flat.texture() != null) source = load(manager, flat.texture());
+            }
         }
         if (source == null) return Optional.empty();
 

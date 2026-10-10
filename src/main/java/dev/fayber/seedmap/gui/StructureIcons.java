@@ -99,10 +99,15 @@ public final class StructureIcons {
             IconSilhouette.draw(context, structureId, x, y,
                     custom, decoration == null ? null : decoration.getPath(), item);
         }
-        drawIcon(context, structureId, x, y);
+        drawIconImpl(context, structureId, x, y, shapeOutline);
     }
 
     public static void drawIcon(GuiGraphicsExtractor context, Identifier structureId, int x, int y) {
+        drawIconImpl(context, structureId, x, y, false);
+    }
+
+    private static void drawIconImpl(GuiGraphicsExtractor context, Identifier structureId,
+                                     int x, int y, boolean captureItem) {
         if (structureId == null) {
             drawMapSprite(context, "red_x", x, y);
             return;
@@ -120,7 +125,12 @@ public final class StructureIcons {
         }
         Item item = ITEMS.get(structureId);
         if (item != null) {
-            context.item(new ItemStack(item), x, y);
+            if (captureItem) RenderedItemCapture.beginItem(structureId);
+            try {
+                context.item(new ItemStack(item), x, y);
+            } finally {
+                if (captureItem) RenderedItemCapture.endItem();
+            }
             return;
         }
         context.blit(RenderPipelines.GUI_TEXTURED, icon, x, y, 0, 0, 16, 16, 16, 16, colorFor(structureId));
