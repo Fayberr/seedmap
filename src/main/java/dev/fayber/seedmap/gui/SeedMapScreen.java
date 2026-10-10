@@ -1108,7 +1108,7 @@ public class SeedMapScreen extends Screen {
             FreecamCamera.locate(minecraft).ifPresent(camera -> {
                 int x = (int) Math.round(viewport.worldToScreenX(camera.x()));
                 int z = (int) Math.round(viewport.worldToScreenZ(camera.z()));
-                NavigationPointer.draw(context, x, z,
+                NavigationPointer.drawMap(context, x, z,
                         (float) Math.toRadians(camera.yaw() + 180f), 0xA6FFFFFF);
             });
         }
@@ -1129,7 +1129,7 @@ public class SeedMapScreen extends Screen {
                     matrices.popMatrix();
                 }
             }
-            NavigationPointer.draw(context, sx, sy,
+            NavigationPointer.drawMap(context, sx, sy,
                     (float) Math.toRadians(minecraft.player.getYRot() + 180f), 0xFFFFFFFF);
         }
         context.disableScissor();

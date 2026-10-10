@@ -4,26 +4,41 @@ import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
 
 class NavigationPointerTest {
-    @Test void navigationGlyphHasNoFilledBackgroundOrCenter() {
-        int[] pixels = NavigationPointer.rasterize();
-        assertEquals(64 * 64, pixels.length);
-        assertEquals(0, pixels[0], "top-left background must be transparent");
-        assertEquals(0, pixels[63], "top-right background must be transparent");
-        assertEquals(0, pixels[32 * 64 + 32], "hollow pointer has a transparent center");
-        assertTrue((pixels[8 * 64 + 32] >>> 24) > 0, "visible tip");
+    private static final int SIDE = 64;
+
+    @Test void mapPointerIsASolidTriangularCursorWithTransparentBackground() {
+        int[] pixels = NavigationPointer.rasterizeMap();
+        assertEquals(SIDE * SIDE, pixels.length);
+        assertEquals(0, pixels[0]);
+        assertEquals(0, pixels[63]);
+        assertTrue((pixels[10 * SIDE + 32] >>> 24) > 0, "north-pointing tip");
+        assertTrue((pixels[34 * SIDE + 32] >>> 24) > 180, "filled map cursor, not hollow");
+        assertEquals(0, pixels[58 * SIDE + 32], "no surrounding rectangular background");
     }
 
-    @Test void glyphHasLeftRightSymmetryAndAntialiasing() {
-        int[] pixels = NavigationPointer.rasterize();
-        boolean hasSoftPixels = false;
-        for (int y = 0; y < 64; y++) {
-            for (int x = 0; x < 32; x++) {
-                int left = pixels[y * 64 + x] >>> 24;
-                int right = pixels[y * 64 + (63 - x)] >>> 24;
-                assertTrue(Math.abs(left - right) <= 2, "glyph must be symmetric");
-                if (left > 0 && left < 255) hasSoftPixels = true;
+    @Test void hudArrowHasStraightShaftAndTriangularHead() {
+        int[] pixels = NavigationPointer.rasterizeHud();
+        assertEquals(SIDE * SIDE, pixels.length);
+        assertEquals(0, pixels[0]);
+        assertTrue((pixels[32 * SIDE + 10] >>> 24) > 180, "horizontal shaft");
+        assertTrue((pixels[32 * SIDE + 53] >>> 24) > 180, "east-pointing arrow head");
+        assertEquals(0, pixels[14 * SIDE + 10], "background around shaft is transparent");
+        assertEquals(0, pixels[58 * SIDE + 53], "no opaque overlay box");
+    }
+
+    @Test void mapsAndHudAreDifferentShapesAndHaveAntialiasedEdges() {
+        int[] map = NavigationPointer.rasterizeMap();
+        int[] hud = NavigationPointer.rasterizeHud();
+        assertFalse(java.util.Arrays.equals(map, hud));
+        for (int[] raster : new int[][]{map, hud}) {
+            boolean soft = false, filled = false;
+            for (int pixel : raster) {
+                int alpha = pixel >>> 24;
+                if (alpha > 0 && alpha < 255) soft = true;
+                if (alpha >= 245) filled = true;
             }
+            assertTrue(soft, "edges should be antialiased");
+            assertTrue(filled, "arrow body should be filled");
         }
-        assertTrue(hasSoftPixels, "outline should be antialiased");
     }
 }

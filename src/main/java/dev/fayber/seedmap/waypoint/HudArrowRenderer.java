@@ -30,7 +30,7 @@ public final class HudArrowRenderer {
 
         int centerX = context.guiWidth() / 2;
         int arrowY = 18;
-        NavigationPointer.draw(context, centerX, arrowY, (float) Math.toRadians(relative), 0xFFFFFFFF);
+        NavigationPointer.drawHud(context, centerX, arrowY, (float) Math.toRadians(relative), 0xFFFFFFFF);
 
         String label = waypoint.name() + "  " + distance + " m";
         context.centeredText(client.font, label, centerX, arrowY + 12, 0xFFFFFFFF);
