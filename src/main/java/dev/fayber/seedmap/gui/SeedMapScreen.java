@@ -58,7 +58,7 @@ public class SeedMapScreen extends Screen {
     private static final List<Integer> BIOME_LAYERS = List.of(64, 32, 0, -40, -60);
     private static final double ICON_CLUSTER_RADIUS = 12.0;
     private static final double DOT_CLUSTER_RADIUS = 5.0;
-    private boolean filtersExpanded;
+    private int sidebarTab;
     private static final int GRID_LINE = 0x38FFFFFF;
     private static final int REGION_LINE = 0x70FFFFFF;
     private static final int FACING_LINE = 0x90FFFFFF;
@@ -160,38 +160,24 @@ public class SeedMapScreen extends Screen {
         int pw = panelW();
         int y = HEADER_HEIGHT + PAD;
         closePicker();
-        for (AbstractWidget w : new AbstractWidget[]{seedField, applyButton, goField, goButton, targetButton, searchButton, resultsList}) {
+        for (AbstractWidget w : new AbstractWidget[]{
+                seedField, applyButton, goField, goButton, targetButton, searchButton, resultsList}) {
             if (w != null) removeWidget(w);
         }
+        seedField = null;
+        applyButton = null;
+        goField = null;
+        goButton = null;
+        targetButton = null;
+        searchButton = null;
+        resultsList = null;
+        grid = null;
+        gridTop = -1;
+        hintY = -1;
+        layerLabelY = -1;
+        searchCaptionY = -1;
         controls.clear();
 
-        y += 12;
-        boolean singleplayer = minecraft.getSingleplayerServer() != null;
-        seedField = new EditBox(font, px, y, pw - 40, BTN_H, Component.translatable("seedmap.screen.seed_placeholder"));
-        seedField.setMaxLength(64);
-        seedField.setHint(Component.translatable("seedmap.screen.seed_placeholder"));
-        seedField.setResponder(this::updateSeedFieldColor);
-        seedField.setValue(currentSeedText());
-        seedField.setEditable(!singleplayer);
-        addRenderableWidget(seedField);
-        applyButton = new SeedMapButton(px + pw - 36, y, 36, BTN_H,
-                Component.translatable("seedmap.screen.apply"), this::applySeed);
-        applyButton.active = !singleplayer;
-        addRenderableWidget(applyButton);
-        y += BTN_H + GAP;
-
-        goField = new EditBox(font, px, y, pw - 40, BTN_H, Component.translatable("seedmap.screen.goto"));
-        goField.setMaxLength(48);
-        goField.setHint(Component.translatable("seedmap.screen.goto"));
-        goField.setResponder(text -> goField.setTextColor(
-                text.isBlank() || CoordinateParser.parse(text).isPresent() ? 0xFFFFFF : 0xFF5555));
-        addRenderableWidget(goField);
-        goButton = new SeedMapButton(px + pw - 36, y, 36, BTN_H,
-                Component.translatable("seedmap.screen.go"), this::goToTyped);
-        addRenderableWidget(goButton);
-        y += BTN_H + GAP + 1;
-
-        // The top toolbar stays outside the scrollable map and right sidebar.
         List<SegmentedControl.Segment> dimensions = new ArrayList<>();
         for (Dimension dimension : Dimension.values()) {
             dimensions.add(SegmentedControl.Segment.of(dimension.displayName(),
@@ -209,126 +195,150 @@ public class SeedMapScreen extends Screen {
                                 viewport.top + viewport.height / 2.0, 0.5)),
                 SegmentedControl.Segment.of(Component.literal("Settings"), () -> false,
                         () -> minecraft.setScreenAndShow(SeedMapSettings.create(this))))));
-        // Biome height and search options remain in the context sidebar.
-        if (currentDimension == Dimension.OVERWORLD) {
-            int labelW = font.width(Component.translatable("seedmap.screen.biome_y")) + 4;
-            layerLabelY = y + (SEG_H - 8) / 2;
-            List<SegmentedControl.Segment> layers = new ArrayList<>();
-            for (int layer : BIOME_LAYERS) {
-                layers.add(SegmentedControl.Segment.of(Component.literal(Integer.toString(layer)),
-                        () -> config.biomeY == layer, () -> setBiomeY(layer)));
-            }
-            if (!BIOME_LAYERS.contains(config.biomeY)) config.biomeY = SeedWorld.SURFACE_Y;
-            controls.add(new SegmentedControl(px + labelW, y, pw - labelW, SEG_H, layers));
-            y += SEG_H + GAP;
-        } else {
-            layerLabelY = -1;
-        }
-        y += 4;
+
+        controls.add(new SegmentedControl(px, y, pw, 18, List.of(
+                SegmentedControl.Segment.of(Component.literal("Search"), () -> sidebarTab == 0,
+                        () -> { sidebarTab = 0; buildPanel(); }),
+                SegmentedControl.Segment.of(Component.literal("Features"), () -> sidebarTab == 1,
+                        () -> { sidebarTab = 1; buildPanel(); }),
+                SegmentedControl.Segment.of(Component.literal("World"), () -> sidebarTab == 2,
+                        () -> { sidebarTab = 2; buildPanel(); }))));
+        y += 18 + GAP + 6;
 
         List<Identifier> structureIds;
         if (session == null) {
             structureIds = List.of(lastStructure);
         } else {
-            List<Identifier> ids = new ArrayList<>(session.world().allStructures().stream().map(SeedWorld::idOf).toList());
+            List<Identifier> ids = new ArrayList<>(session.world().allStructures().stream()
+                    .map(SeedWorld::idOf).toList());
             ids.addAll(session.featureIds());
             structureIds = List.copyOf(ids);
         }
         if (!structureIds.contains(lastStructure)) lastStructure = structureIds.get(0);
-        List<Identifier> biomeIds = session == null ? List.of(lastBiome) : session.world().allBiomes().stream()
-                .map(SeedWorld::idOf).toList();
+        List<Identifier> biomeIds = session == null ? List.of(lastBiome)
+                : session.world().allBiomes().stream().map(SeedWorld::idOf).toList();
         if (!biomeIds.contains(lastBiome)) lastBiome = biomeIds.get(0);
-
-        controls.add(new SegmentedControl(px, y, pw, SEG_H, List.of(
-                SegmentedControl.Segment.of(Component.literal("Features  " +
-                                (filtersExpanded ? "Hide filters" : "Show filters")),
-                        () -> filtersExpanded,
-                        () -> { filtersExpanded = !filtersExpanded; buildPanel(); }))));
-        y += SEG_H + GAP;
-        gridTop = y + 10;
-        if (session != null && filtersExpanded) {
-            grid = new StructureGrid(px, gridTop, pw / StructureGrid.CELL, structureIds,
-                    session.enabledStructures(), this::saveToggles, id -> {
-                        setBiomeMode(false);
-                        selectTarget(id);
-                    }, () -> biomeMode ? null : lastStructure,
-                    Math.max(2, Math.min(5, (height - gridTop - 118) / StructureGrid.CELL)));
-            controls.add(new SegmentedControl(px + pw - 60, y - 1, 60, 10, List.of(
-                    SegmentedControl.Segment.of(Component.translatable("seedmap.screen.all"),
-                            () -> false, () -> grid.setAll(true)),
-                    SegmentedControl.Segment.of(Component.translatable("seedmap.screen.none"),
-                            () -> false, () -> grid.setAll(false)))));
-            y = gridTop + grid.height() + 2;
-            hintY = y;
-            y += 10;
-        } else {
-            grid = null;
-            hintY = -1;
-            y += 4;
-        }
-        y += 4;
-
-        searchCaptionY = y;
-        y += 10;
-        controls.add(new SegmentedControl(px, y, pw, SEG_H, List.of(
-                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.mode_structure"), () -> !biomeMode, () -> setBiomeMode(false)),
-                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.mode_biome"), () -> biomeMode, () -> setBiomeMode(true)))));
-        y += SEG_H + GAP;
-
-        targetButton = new SeedMapButton(px, y, pw, BTN_H, targetLabel(),
-                () -> togglePicker(biomeMode ? biomeIds : structureIds));
-        addRenderableWidget(targetButton);
-        y += BTN_H + GAP;
-
-        List<SegmentedControl.Segment> radii = new ArrayList<>();
-        for (int r : RADII) {
-            radii.add(SegmentedControl.Segment.of(Component.translatable("seedmap.screen.radius_short", r / 1000),
-                    () -> config.lastRadius == r, () -> {
-                        config.lastRadius = r;
-                        SeedMapClient.saveConfig();
-                    }));
-        }
-        if (!RADII.contains(config.lastRadius)) config.lastRadius = 5000;
-        controls.add(new SegmentedControl(px, y, pw, SEG_H, radii));
-        y += SEG_H + GAP;
-
-        searchButton = new SeedMapButton(px, y, pw, BTN_H,
-                Component.translatable("seedmap.screen.search"), this::runSearch);
-        searchButton.active = session != null && !searching;
-        addRenderableWidget(searchButton);
-        y += BTN_H + GAP + 2;
 
         int actionRow = height - PAD - SEG_H;
         int toggleRow = actionRow - SEG_H - GAP;
         statusY = toggleRow - 12;
-        int listBottom = statusY - 4;
-        resultsList = new ResultsListWidget(minecraft, pw, Math.max(20, listBottom - y), y);
-        resultsList.setX(px);
-        addRenderableWidget(resultsList);
-        refreshList();
+
+        if (sidebarTab == 0) {
+            searchCaptionY = y;
+            y += 12;
+            controls.add(new SegmentedControl(px, y, pw, SEG_H, List.of(
+                    SegmentedControl.Segment.of(Component.translatable("seedmap.screen.mode_structure"),
+                            () -> !biomeMode, () -> setBiomeMode(false)),
+                    SegmentedControl.Segment.of(Component.translatable("seedmap.screen.mode_biome"),
+                            () -> biomeMode, () -> setBiomeMode(true)))));
+            y += SEG_H + GAP;
+
+            targetButton = new SeedMapButton(px, y, pw, BTN_H, targetLabel(),
+                    () -> togglePicker(biomeMode ? biomeIds : structureIds));
+            addRenderableWidget(targetButton);
+            y += BTN_H + GAP;
+
+            List<SegmentedControl.Segment> radii = new ArrayList<>();
+            for (int radius : RADII) {
+                radii.add(SegmentedControl.Segment.of(
+                        Component.translatable("seedmap.screen.radius_short", radius / 1000),
+                        () -> config.lastRadius == radius,
+                        () -> { config.lastRadius = radius; SeedMapClient.saveConfig(); }));
+            }
+            if (!RADII.contains(config.lastRadius)) config.lastRadius = 5000;
+            controls.add(new SegmentedControl(px, y, pw, SEG_H, radii));
+            y += SEG_H + GAP;
+
+            searchButton = new SeedMapButton(px, y, pw, BTN_H,
+                    Component.translatable("seedmap.screen.search"), this::runSearch);
+            searchButton.active = session != null && !searching;
+            addRenderableWidget(searchButton);
+            y += BTN_H + GAP + 2;
+
+            resultsList = new ResultsListWidget(minecraft, pw,
+                    Math.max(20, statusY - 4 - y), y);
+            resultsList.setX(px);
+            addRenderableWidget(resultsList);
+            refreshList();
+        } else if (sidebarTab == 1) {
+            if (session != null) {
+                gridTop = y + 4;
+                int visibleRows = Math.max(2, Math.min(6,
+                        (statusY - gridTop - 18) / StructureGrid.CELL));
+                grid = new StructureGrid(px, gridTop, Math.max(1, pw / StructureGrid.CELL),
+                        structureIds, session.enabledStructures(), this::saveToggles,
+                        id -> { setBiomeMode(false); selectTarget(id); },
+                        () -> biomeMode ? null : lastStructure, visibleRows);
+                controls.add(new SegmentedControl(px + pw - 74, y - 1, 74, 12, List.of(
+                        SegmentedControl.Segment.of(Component.translatable("seedmap.screen.all"),
+                                () -> false, () -> grid.setAll(true)),
+                        SegmentedControl.Segment.of(Component.translatable("seedmap.screen.none"),
+                                () -> false, () -> grid.setAll(false)))));
+                hintY = Math.min(gridTop + grid.height() + 4, statusY - 10);
+            }
+        } else {
+            boolean singleplayer = minecraft.getSingleplayerServer() != null;
+            seedField = new EditBox(font, px, y, pw - 45, BTN_H,
+                    Component.translatable("seedmap.screen.seed_placeholder"));
+            seedField.setMaxLength(64);
+            seedField.setHint(Component.translatable("seedmap.screen.seed_placeholder"));
+            seedField.setResponder(this::updateSeedFieldColor);
+            seedField.setValue(currentSeedText());
+            seedField.setEditable(!singleplayer);
+            addRenderableWidget(seedField);
+            applyButton = new SeedMapButton(px + pw - 41, y, 41, BTN_H,
+                    Component.translatable("seedmap.screen.apply"), this::applySeed);
+            applyButton.active = !singleplayer;
+            addRenderableWidget(applyButton);
+            y += BTN_H + GAP + 7;
+
+            goField = new EditBox(font, px, y, pw - 41, BTN_H,
+                    Component.translatable("seedmap.screen.goto"));
+            goField.setMaxLength(48);
+            goField.setHint(Component.translatable("seedmap.screen.goto"));
+            goField.setResponder(value -> goField.setTextColor(
+                    value.isBlank() || CoordinateParser.parse(value).isPresent() ? 0xFFFFFF : 0xFF5555));
+            addRenderableWidget(goField);
+            goButton = new SeedMapButton(px + pw - 41, y, 41, BTN_H,
+                    Component.translatable("seedmap.screen.go"), this::goToTyped);
+            addRenderableWidget(goButton);
+            y += BTN_H + GAP + 8;
+
+            if (currentDimension == Dimension.OVERWORLD) {
+                int labelWidth = font.width(Component.translatable("seedmap.screen.biome_y")) + 6;
+                layerLabelY = y + (SEG_H - 8) / 2;
+                List<SegmentedControl.Segment> layers = new ArrayList<>();
+                for (int layer : BIOME_LAYERS) {
+                    layers.add(SegmentedControl.Segment.of(Component.literal(Integer.toString(layer)),
+                            () -> config.biomeY == layer, () -> setBiomeY(layer)));
+                }
+                if (!BIOME_LAYERS.contains(config.biomeY)) config.biomeY = SeedWorld.SURFACE_Y;
+                controls.add(new SegmentedControl(px + labelWidth, y, pw - labelWidth, SEG_H, layers));
+            }
+        }
 
         controls.add(new SegmentedControl(px, toggleRow, pw, SEG_H, List.of(
-                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.beam"), () -> config.showBeam, () -> {
-                    config.showBeam = !config.showBeam;
-                    SeedMapClient.saveConfig();
-                }),
-                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.slime"), () -> config.showSlimeChunks, () -> {
-                    config.showSlimeChunks = !config.showSlimeChunks;
-                    SeedMapClient.saveConfig();
-                }),
-                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.grid"), () -> config.showGrid, () -> {
-                    config.showGrid = !config.showGrid;
-                    SeedMapClient.saveConfig();
-                }),
-                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.facing"), () -> config.showFacing, () -> {
-                    config.showFacing = !config.showFacing;
-                    SeedMapClient.saveConfig();
-                }))));
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.beam"),
+                        () -> config.showBeam, () -> {
+                            config.showBeam = !config.showBeam; SeedMapClient.saveConfig(); }),
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.slime"),
+                        () -> config.showSlimeChunks, () -> {
+                            config.showSlimeChunks = !config.showSlimeChunks; SeedMapClient.saveConfig(); }),
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.grid"),
+                        () -> config.showGrid, () -> {
+                            config.showGrid = !config.showGrid; SeedMapClient.saveConfig(); }),
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.facing"),
+                        () -> config.showFacing, () -> {
+                            config.showFacing = !config.showFacing; SeedMapClient.saveConfig(); }))));
         controls.add(new SegmentedControl(px, actionRow, pw, SEG_H, List.of(
-                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.center"), () -> false, this::centerOnPlayer),
-                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.copy"), () -> false, this::copyWaypoint),
-                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.export"), () -> false, this::exportMap),
-                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.clear_waypoint"), () -> false, WaypointState::clear))));
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.center"),
+                        () -> false, this::centerOnPlayer),
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.copy"),
+                        () -> false, this::copyWaypoint),
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.export"),
+                        () -> false, this::exportMap),
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.clear_waypoint"),
+                        () -> false, WaypointState::clear))));
     }
 
     private void exportMap() {
@@ -545,8 +555,8 @@ public class SeedMapScreen extends Screen {
                     if (session != current) return;
                     searching = false;
                     if (minecraft.gui.screen() instanceof SeedMapScreen s) {
-                        s.resultsList.setStatus(Component.translatable("seedmap.screen.search_failed"));
-                        s.searchButton.active = true;
+                        if (s.resultsList != null) s.resultsList.setStatus(Component.translatable("seedmap.screen.search_failed"));
+                        if (s.searchButton != null) s.searchButton.active = true;
                     }
                 });
                 return;
@@ -557,7 +567,7 @@ public class SeedMapScreen extends Screen {
                 lastResults = results;
                 if (minecraft.gui.screen() instanceof SeedMapScreen s) {
                     s.refreshList();
-                    s.searchButton.active = true;
+                    if (s.searchButton != null) s.searchButton.active = true;
                 }
             });
         });
@@ -740,11 +750,14 @@ public class SeedMapScreen extends Screen {
         if (layerLabelY >= 0) {
             context.text(font, Component.translatable("seedmap.screen.biome_y"), px, layerLabelY, MUTED, false);
         }
-        context.fill(px, searchCaptionY - 3, px + pw, searchCaptionY - 2, SEPARATOR);
-        context.text(font, Component.translatable("seedmap.screen.search_caption"), px, searchCaptionY, MUTED, false);
-        if (!lastResults.isEmpty() && !searching) {
-            String count = Component.translatable("seedmap.screen.result_count", lastResults.size()).getString();
-            context.text(font, count, px + pw - font.width(count), searchCaptionY, MUTED, false);
+        if (searchCaptionY >= 0) {
+            context.fill(px, searchCaptionY - 3, px + pw, searchCaptionY - 2, SEPARATOR);
+            context.text(font, Component.translatable("seedmap.screen.search_caption"),
+                    px, searchCaptionY, MUTED, false);
+            if (!lastResults.isEmpty() && !searching) {
+                String count = Component.translatable("seedmap.screen.result_count", lastResults.size()).getString();
+                context.text(font, count, px + pw - font.width(count), searchCaptionY, MUTED, false);
+            }
         }
         context.fill(px, statusY - 3, px + pw, statusY - 2, SEPARATOR);
         renderStatus(context, mouseX, mouseY);
