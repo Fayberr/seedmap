@@ -13,6 +13,7 @@ class TileKeyTest {
         assertEquals(1024, TileKey.tileSpanBlocks(1));
         assertEquals(2048, TileKey.tileSpanBlocks(2));
         assertEquals(16384, TileKey.tileSpanBlocks(5));
+        assertEquals(524288, TileKey.tileSpanBlocks(10));
     }
 
     @Test
@@ -42,7 +43,7 @@ class TileKeyTest {
         assertEquals(3, TileKey.lodForScale(22.7));
         assertEquals(4, TileKey.lodForScale(45.3));
         assertEquals(5, TileKey.lodForScale(90.6));
-        assertEquals(5, TileKey.lodForScale(1000.0));
+        assertEquals(8, TileKey.lodForScale(1000.0));
     }
 
     @Test
@@ -75,8 +76,9 @@ class TileKeyTest {
 
     @Test
     void lodForViewStopsAtCoarsestLodEvenOverBudget() {
-        int overBudgetAtLod5 = 16384 * 23 - 1;
-        assertEquals(5, TileKey.lodForView(4.0, 0, 0, overBudgetAtLod5, overBudgetAtLod5));
+        int overBudgetAtLastLod = TileKey.tileSpanBlocks(TileKey.LOD_COUNT - 1) * 23 - 1;
+        assertEquals(TileKey.LOD_COUNT - 1,
+                TileKey.lodForView(4.0, 0, 0, overBudgetAtLastLod, overBudgetAtLastLod));
     }
 
     @Test
