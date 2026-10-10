@@ -49,6 +49,13 @@ public final class IconSilhouette {
         }
 
         int scale = Math.clamp((int) Math.round(client.getWindow().getGuiScale()), 1, 8);
+        // Ask Minecraft for the silhouette of the *rendered* item; the first
+        // appearance simply has no outline until the one-off atlas readback
+        // completes. No per-frame copies occur after caching.
+        if (item != null && customPng == null && mapSprite == null
+                && RenderedItemCapture.cached(structure) == null) {
+            RenderedItemCapture.request(structure, x, y);
+        }
         Key key = new Key(structure, scale);
         Optional<Entry> cached = CACHE.computeIfAbsent(key,
                 unused -> makeTexture(client, manager, structure, scale, customPng, mapSprite, item));
@@ -77,16 +84,10 @@ public final class IconSilhouette {
                     "textures/map/decorations/" + mapSprite + ".png"));
         }
         if (source == null && item != null) {
-            Identifier key = BuiltInRegistries.ITEM.getKey(item);
-            ItemModelTexture.Result model = ItemModelTexture.resolve(manager, key);
-            if (model.hasDefinition()) {
-                // A model-aware source avoids the wrong white silhouette when
-                // a resource pack remaps the item's icon or replaces it with 3D geometry.
-                if (model.texture() != null) source = load(manager, model.texture());
-            } else {
-                source = load(manager, Identifier.fromNamespaceAndPath(key.getNamespace(),
-                        "textures/item/" + key.getPath() + ".png"));
-            }
+            // This mask comes from the actual GUI item atlas, so model geometry,
+            // transforms, resource packs and lighting already match the icon.
+            // Do not substitute a guessed PNG for custom 3D items.
+            source = RenderedItemCapture.cached(structure);
         }
         if (source == null) return Optional.empty();
 
@@ -132,6 +133,15 @@ public final class IconSilhouette {
         }
     }
 
+    public static void invalidate(Identifier structure) {
+        CACHE.entrySet().removeIf(entry -> {
+            if (!entry.getKey().structure().equals(structure)) return false;
+            entry.getValue().ifPresent(texture ->
+                    Minecraft.getInstance().getTextureManager().release(texture.texture()));
+            return true;
+        });
+    }
+
     /** Resource packs, game restarts and GUI scale changes must never use stale silhouettes. */
     public static void clearCache() {
         Minecraft client = Minecraft.getInstance();
@@ -139,6 +149,7 @@ public final class IconSilhouette {
             if (cached.isPresent()) client.getTextureManager().release(cached.get().texture());
         }
         CACHE.clear();
+        RenderedItemCapture.clear();
         generation++;
         lastResources = null;
     }

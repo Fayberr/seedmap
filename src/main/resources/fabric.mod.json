@@ -25,5 +25,8 @@
   },
   "suggests": {
     "modmenu": "*"
-  }
+  },
+  "mixins": [
+    "seedmap.mixins.json"
+  ]
 }
