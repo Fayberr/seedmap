@@ -16,6 +16,15 @@ public final class MarkerVisibility {
 
     private MarkerVisibility() {}
 
+    /** Primary points of interest worth keeping in the compact feature picker. */
+    public static boolean isLandmark(Identifier id) {
+        String path = id.getPath();
+        return path.contains("stronghold") || path.contains("mansion")
+                || path.contains("monument") || path.contains("ancient_city")
+                || path.contains("end_city") || path.contains("bastion")
+                || path.contains("fortress");
+    }
+
     public static int clamp(int density) {
         return Math.clamp(density, SPARSE, ALL);
     }
@@ -28,8 +37,10 @@ public final class MarkerVisibility {
         if (path.contains("stronghold") || path.contains("mansion") || path.contains("monument")
                 || path.contains("ancient_city") || path.contains("end_city")) {
             base = 512.0;
-        } else if (path.contains("bastion") || path.contains("fortress") || path.contains("trial_chambers")) {
-            base = 16.0;
+        } else if (path.contains("bastion") || path.contains("fortress")) {
+            base = 64.0;
+        } else if (path.contains("trial_chambers")) {
+            base = 8.0;
         } else if (path.startsWith("village") || path.contains("pillager_outpost")
                 || path.contains("desert_pyramid") || path.contains("jungle_pyramid")
                 || path.contains("swamp_hut") || path.contains("igloo")) {
