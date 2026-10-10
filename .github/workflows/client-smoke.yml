@@ -2,7 +2,7 @@ name: Client smoke test
 
 on:
   push:
-    branches: ['fabric/26.3', 'ui/seedmap-overhaul']
+    branches: ['fabric/26.3']
     paths:
       - 'src/main/**'
       - 'gradle.properties'
@@ -40,7 +40,7 @@ jobs:
             echo "SeedMap did not initialize."
             exit 1
           fi
-          if grep -Eq 'InvalidInjectionException|NoClassDefFoundError|NoSuchMethodError|Crash Report|Exception in thread "Render thread"|Failed to create backend|BackendCreationException|Couldn't find matching GLX visual' client-smoke.log; then
+          if grep -Eq 'InvalidInjectionException|NoClassDefFoundError|NoSuchMethodError|Crash Report|Exception in thread "Render thread"|Failed to create backend|BackendCreationException|Couldn.t find matching GLX visual' client-smoke.log; then
             echo "Minecraft reported a startup error."
             exit 1
           fi
