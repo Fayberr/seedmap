@@ -31,6 +31,10 @@ public final class SeedMapConfig {
     public boolean showSpawnMarker = true;
     public boolean showWaypointMarker = true;
     public boolean showFreecamMarker = true;
+    /** When on, hide excess individual POIs rather than showing grouped clusters. */
+    public boolean hideCrowdedInsteadOfClustering = true;
+    /** Experimental 1px translucent border to distinguish icons from terrain. */
+    public boolean experimentalIconOutline = false;
     public int markerDensity = 1;
     public int biomeY = 64;
 

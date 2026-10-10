@@ -62,6 +62,12 @@ public final class SeedMapSettings extends Screen {
                 (IntSupplier) () -> c.markerDensity,
                 (IntConsumer) v -> c.markerDensity = Math.clamp(v, 0, 3),
                 0, 3, 1);
+        bool.invoke(builder, "Hide crowded icons (no clustering)",
+                (Supplier<Boolean>) () -> c.hideCrowdedInsteadOfClustering,
+                (Consumer<Boolean>) v -> c.hideCrowdedInsteadOfClustering = v);
+        bool.invoke(builder, "Experimental: faint icon outlines",
+                (Supplier<Boolean>) () -> c.experimentalIconOutline,
+                (Consumer<Boolean>) v -> c.experimentalIconOutline = v);
         bool.invoke(builder, "Show spawn marker",
                 (Supplier<Boolean>) () -> c.showSpawnMarker,
                 (Consumer<Boolean>) v -> c.showSpawnMarker = v);
@@ -110,7 +116,7 @@ public final class SeedMapSettings extends Screen {
         int widthPx = Math.min(380, width - 28);
         int x = (width - widthPx) / 2;
         int y = 52;
-        int rowHeight = Math.min(27, Math.max(21, (height - 96) / 7));
+        int rowHeight = Math.min(27, Math.max(21, (height - 96) / 9));
         controls.add(new SegmentedControl(x, 28, widthPx, 21, List.of(
                 SegmentedControl.Segment.of(Component.literal("Map"), () -> page == 0, () -> {
                     page = 0;
@@ -133,6 +139,14 @@ public final class SeedMapSettings extends Screen {
                         }));
             }
             controls.add(new SegmentedControl(x, y, widthPx, 21, choices));
+            y += rowHeight;
+            toggle("Hide crowded icons (no clusters)", () -> config.hideCrowdedInsteadOfClustering,
+                    () -> config.hideCrowdedInsteadOfClustering = !config.hideCrowdedInsteadOfClustering,
+                    x, y, widthPx);
+            y += rowHeight;
+            toggle("Experimental: faint icon outlines", () -> config.experimentalIconOutline,
+                    () -> config.experimentalIconOutline = !config.experimentalIconOutline,
+                    x, y, widthPx);
             y += rowHeight;
             toggle("Spawn marker", () -> config.showSpawnMarker,
                     () -> config.showSpawnMarker = !config.showSpawnMarker, x, y, widthPx);
