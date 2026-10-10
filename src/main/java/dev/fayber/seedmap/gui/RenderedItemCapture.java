@@ -62,6 +62,7 @@ public final class RenderedItemCapture {
 
     /** Minecraft's normal cached GUI-item atlas. */
     public static void onResolved(GuiItemRenderState item, GuiItemAtlas.SlotView slot) {
+        if (!REQUESTS.containsKey(at(item.x(), item.y()))) return;
         int atlasWidth = slot.textureView().getWidth(0);
         int atlasHeight = slot.textureView().getHeight(0);
         int x = Math.round(Math.min(slot.u0(), slot.u1()) * atlasWidth);
@@ -79,7 +80,7 @@ public final class RenderedItemCapture {
     public static void onOversizedResolved(GuiItemRenderState item,
                                            com.mojang.renderpearl.api.textures.GpuTexture texture,
                                            int x0, int y0, int x1, int y1) {
-        if (texture == null) return;
+        if (texture == null || !REQUESTS.containsKey(at(item.x(), item.y()))) return;
         int physicalScale = Math.max(1, Math.round(
                 texture.getWidth(0) / (float) Math.max(1, x1 - x0)));
         int size = Math.clamp(16 * physicalScale, 16, 256);
