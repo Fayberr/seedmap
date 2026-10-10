@@ -2,7 +2,7 @@ name: Client smoke test
 
 on:
   push:
-    branches: ['fabric/26.3']
+    branches: ['fabric/26.3', 'ui/seedmap-overhaul']
     paths:
       - 'src/main/**'
       - 'gradle.properties'

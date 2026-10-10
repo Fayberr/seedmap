@@ -134,6 +134,11 @@ public final class RenderedItemCapture {
         Identifier structure = request.structure();
         LAST_TARGET.remove(structure, item);
         if (!shouldRequest(structure)) return;
+        if ((texture.usage() & com.mojang.renderpearl.api.textures.GpuTexture.USAGE_COPY_SRC) == 0) {
+            failed(structure, "Item render target lacks USAGE_COPY_SRC (usage=" + texture.usage()
+                    + "); cannot copy GPU alpha", null);
+            return;
+        }
         if (w < 8 || h < 8 || w > 256 || h > 256 || w != h
                 || x < 0 || y < 0 || x + w > texture.getWidth(0)
                 || y + h > texture.getHeight(0)) {
