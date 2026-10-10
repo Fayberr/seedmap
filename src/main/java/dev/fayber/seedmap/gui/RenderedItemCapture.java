@@ -54,30 +54,53 @@ public final class RenderedItemCapture {
         }
     }
 
-    /** Invoked by the sole GuiRenderer mixin at the item atlas blit boundary. */
+    /** Minecraft's normal cached GUI-item atlas. */
     public static void onResolved(GuiItemRenderState item, GuiItemAtlas.SlotView slot) {
-        Request requested = REQUESTS.get(at(item.x(), item.y()));
+        int atlasWidth = slot.textureView().getWidth(0);
+        int atlasHeight = slot.textureView().getHeight(0);
+        int x = Math.round(Math.min(slot.u0(), slot.u1()) * atlasWidth);
+        int y = Math.round(Math.min(slot.v0(), slot.v1()) * atlasHeight);
+        int w = Math.round(Math.abs(slot.u1() - slot.u0()) * atlasWidth);
+        int h = Math.round(Math.abs(slot.v1() - slot.v0()) * atlasHeight);
+        capture(item.x(), item.y(), slot.textureView().texture(), x, y, w, h);
+    }
+
+    /**
+     * Large custom 3D models are rendered into Minecraft's picture-in-picture
+     * texture rather than the standard item atlas. Take only the 16x16-GUI-pixel
+     * region that the map actually displays; avoid reading back the entire PIP.
+     */
+    public static void onOversizedResolved(GuiItemRenderState item,
+                                           com.mojang.renderpearl.api.textures.GpuTexture texture,
+                                           int x0, int y0, int x1, int y1) {
+        if (texture == null) return;
+        int physicalScale = Math.max(1, Math.round(
+                texture.getWidth(0) / (float) Math.max(1, x1 - x0)));
+        int size = Math.clamp(16 * physicalScale, 16, 256);
+        int sx = Math.round((item.x() - x0) * physicalScale);
+        int sy = Math.round((item.y() - y0) * physicalScale);
+        capture(item.x(), item.y(), texture, sx, sy, size, size);
+    }
+
+    private static void capture(int requestedX, int requestedY,
+                                com.mojang.renderpearl.api.textures.GpuTexture texture,
+                                int x, int y, int w, int h) {
+        Request requested = REQUESTS.get(at(requestedX, requestedY));
         if (requested == null || requested.epoch() != epoch) return;
         Identifier structure = requested.structure();
         if (IMAGES.containsKey(structure) || UNSUPPORTED.contains(structure)) {
-            REQUESTS.remove(at(item.x(), item.y()));
+            REQUESTS.remove(at(requestedX, requestedY));
             return;
         }
         if (IN_FLIGHT.contains(structure) || IN_FLIGHT.size() >= MAX_IN_FLIGHT) return;
-        REQUESTS.remove(at(item.x(), item.y()));
+        REQUESTS.remove(at(requestedX, requestedY));
 
-        int atlasWidth = slot.textureView().getWidth(0);
-        int atlasHeight = slot.textureView().getHeight(0);
-        int x = Math.round(slot.u0() * atlasWidth);
-        int y = Math.round(slot.v0() * atlasHeight);
-        int w = Math.round(Math.abs(slot.u1() - slot.u0()) * atlasWidth);
-        int h = Math.round(Math.abs(slot.v1() - slot.v0()) * atlasHeight);
         if (w < 8 || h < 8 || w > 256 || h > 256 || w != h
-                || x < 0 || y < 0 || x + w > atlasWidth || y + h > atlasHeight) {
+                || x < 0 || y < 0 || x + w > texture.getWidth(0)
+                || y + h > texture.getHeight(0)) {
             UNSUPPORTED.add(structure);
             return;
         }
-
         final int generation = epoch;
         final GpuBuffer staging;
         try {
@@ -91,10 +114,10 @@ public final class RenderedItemCapture {
         IN_FLIGHT.add(structure);
         try {
             RenderSystem.getDevice().createCommandEncoder().copyTextureToBuffer(
-                    slot.textureView().texture(), staging, 0L, () -> {
-                        Minecraft.getInstance().execute(
-                                () -> processReadback(structure, generation, staging, w, h));
-                    }, 0, x, y, w, h);
+                    texture, staging, 0L,
+                    () -> Minecraft.getInstance().execute(
+                            () -> processReadback(structure, generation, staging, w, h)),
+                    0, x, y, w, h);
         } catch (RuntimeException error) {
             IN_FLIGHT.remove(structure);
             UNSUPPORTED.add(structure);

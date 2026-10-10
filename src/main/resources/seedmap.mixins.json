@@ -3,7 +3,9 @@
   "package": "dev.fayber.seedmap.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
-    "GuiRendererCaptureMixin"
+    "GuiRendererCaptureMixin",
+    "OversizedItemRendererCaptureMixin",
+    "PictureInPictureTextureAccessor"
   ],
   "injectors": {
     "defaultRequire": 1
