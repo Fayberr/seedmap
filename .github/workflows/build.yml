@@ -22,5 +22,7 @@ jobs:
         if: success()
         with:
           name: SeedMap-26.3
-          path: build/libs/seedmap-*.jar
+          path: |
+            build/libs/seedmap-*.jar
+            !build/libs/*-sources.jar
           if-no-files-found: error
