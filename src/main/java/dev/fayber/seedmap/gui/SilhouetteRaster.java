@@ -3,71 +3,60 @@ package dev.fayber.seedmap.gui;
 import java.awt.image.BufferedImage;
 
 /**
- * Renders a one-physical-pixel outer silhouette based on the active icon alpha.
+ * Strict pixel-art silhouette, including stair-step diagonals and hard corners.
+ * No bilinear filtering, fractional threshold, blur, or marching-squares paths.
  *
- * A fixed 50% coverage contour is used for ALL icons. Previous code multiplied
- * transparency gradients by GUI scale, making antialiased sprites and pixel art
- * appear to have different blur/thickness.
- *
- * This work only runs when the icon or resource pack changes, not every frame.
+ * Generated only once per icon/model and GUI scale; each subsequent frame
+ * draws one cached texture. Width is measured in PHYSICAL screen pixels.
  */
 public final class SilhouetteRaster {
-    public static final int MARGIN = 2;
-    public static final int SIZE = 16 + MARGIN * 2;
-    private static final float ALPHA_CUTOFF = 0.5f;
+    public static final int MARGIN = 3;
+    public static final int SIZE = 16 + 2 * MARGIN;
+    public static final int STROKE_PIXELS = 2;
+    private static final int ALPHA_THRESHOLD = 128;
+    private static final int STROKE_COLOR = 0xF5FFFFFF;
 
     private SilhouetteRaster() {}
 
-    public static int[] rasterize(BufferedImage source, int guiScale) {
+    public static int[] rasterize(BufferedImage image, int guiScale) {
         int scale = Math.clamp(guiScale, 1, 8);
-        int width = SIZE * scale;
-        int[] outline = new int[width * width];
-        if (source == null || source.getWidth() < 1 || source.getHeight() < 1) return outline;
+        int side = SIZE * scale;
+        int[] out = new int[side * side];
+        if (image == null || image.getWidth() == 0 || image.getHeight() == 0) return out;
 
-        // Normalize masks to the *rendered* pixel grid rather than the source
-        // texture's dimensions, so 16x16 and 64x64 resource-pack sprites
-        // receive the same physical border width.
-        boolean[] opaque = new boolean[width * width];
-        for (int y = 0; y < width; y++) {
-            for (int x = 0; x < width; x++) {
-                float px = (x + 0.5f) / scale - MARGIN;
-                float py = (y + 0.5f) / scale - MARGIN;
-                opaque[y * width + x] = sampleAlpha(source, px, py) >= ALPHA_CUTOFF;
-            }
-        }
-
-        // 8-connected outer ring, with uniform brightness in every direction.
-        // Diagonal pixels are modestly antialiased; no blur extends past one
-        // physical pixel, and square or stair-step pixel-art corners remain intact.
-        for (int y = 1; y < width - 1; y++) {
-            for (int x = 1; x < width - 1; x++) {
-                int index = y * width + x;
-                if (opaque[index]) continue;
-                boolean side = opaque[index - 1] || opaque[index + 1]
-                        || opaque[index - width] || opaque[index + width];
-                boolean diagonal = opaque[index - width - 1] || opaque[index - width + 1]
-                        || opaque[index + width - 1] || opaque[index + width + 1];
-                if (side || diagonal) {
-                    int alpha = side ? 235 : 180;
-                    outline[index] = (alpha << 24) | 0xFFFFFF;
+        boolean[] occupied = new boolean[side * side];
+        for (int y = 0; y < side; y++) {
+            for (int x = 0; x < side; x++) {
+                // Nearest texel: a diagonal made of square pixels must stay
+                // a staircase, not an interpolated line through those pixels.
+                int tx = (int) Math.floor((x + 0.5 - MARGIN * scale)
+                        * image.getWidth() / (16.0 * scale));
+                int ty = (int) Math.floor((y + 0.5 - MARGIN * scale)
+                        * image.getHeight() / (16.0 * scale));
+                if (tx >= 0 && ty >= 0 && tx < image.getWidth() && ty < image.getHeight()) {
+                    occupied[y * side + x] = (image.getRGB(tx, ty) >>> 24) >= ALPHA_THRESHOLD;
                 }
             }
         }
-        return outline;
-    }
 
-    private static float sampleAlpha(BufferedImage image, float guiX, float guiY) {
-        float u = guiX * image.getWidth() / 16f - 0.5f;
-        float v = guiY * image.getHeight() / 16f - 0.5f;
-        int x = (int) Math.floor(u), y = (int) Math.floor(v);
-        float fx = u - x, fy = v - y;
-        float top = alpha(image, x, y) * (1 - fx) + alpha(image, x + 1, y) * fx;
-        float bottom = alpha(image, x, y + 1) * (1 - fx) + alpha(image, x + 1, y + 1) * fx;
-        return top * (1 - fy) + bottom * fy;
-    }
-
-    private static float alpha(BufferedImage image, int x, int y) {
-        if (x < 0 || y < 0 || x >= image.getWidth() || y >= image.getHeight()) return 0;
-        return ((image.getRGB(x, y) >>> 24) & 255) / 255f;
+        // Square dilation gives equal thickness at both horizontal and diagonal
+        // pixel steps; the original opaque mask is excluded from the white ring.
+        for (int y = STROKE_PIXELS; y < side - STROKE_PIXELS; y++) {
+            for (int x = STROKE_PIXELS; x < side - STROKE_PIXELS; x++) {
+                int center = y * side + x;
+                if (occupied[center]) continue;
+                boolean bordering = false;
+                for (int dy = -STROKE_PIXELS; dy <= STROKE_PIXELS && !bordering; dy++) {
+                    for (int dx = -STROKE_PIXELS; dx <= STROKE_PIXELS; dx++) {
+                        if (occupied[(y + dy) * side + x + dx]) {
+                            bordering = true;
+                            break;
+                        }
+                    }
+                }
+                if (bordering) out[center] = STROKE_COLOR;
+            }
+        }
+        return out;
     }
 }
