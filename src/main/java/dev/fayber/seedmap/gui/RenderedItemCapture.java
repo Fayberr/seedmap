@@ -103,7 +103,9 @@ public final class RenderedItemCapture {
         int y = Math.round(Math.min(slot.v0(), slot.v1()) * atlasHeight);
         int w = Math.round(Math.abs(slot.u1() - slot.u0()) * atlasWidth);
         int h = Math.round(Math.abs(slot.v1() - slot.v0()) * atlasHeight);
-        capture(item, slot.textureView().texture(), x, y, w, h, false);
+        // The atlas GPU copy reports rows bottom-to-top. Flip only the
+        // decoded alpha; the visible vanilla item is not transformed.
+        capture(item, slot.textureView().texture(), x, y, w, h, true);
     }
 
     /**

@@ -21,6 +21,22 @@ class RenderedItemCaptureTest {
         assertEquals(0, mask.getRGB(3, 3) >>> 24);
     }
 
+    @Test void gpuAtlasReadbackNeedsVerticalFlipToMatchGuiSprite() {
+        ByteBuffer pixels = ByteBuffer.allocate(3 * 3 * 4);
+        // A tall asymmetric 'upright crystal': bottom GPU row corresponds to
+        // the visible top tip; the two remaining rows form its wider base.
+        for (int y = 0; y < 3; y++) for (int x = 0; x < 3; x++) {
+            pixels.put((byte) 0).put((byte) 0).put((byte) 0);
+            pixels.put((byte) (y == 0 || (y == 2 && x == 1) ? 255 : 0));
+        }
+        pixels.flip();
+        var upright = RenderedItemCapture.decodeAlpha(pixels, 3, 3, true);
+        assertNotNull(upright);
+        assertEquals(255, upright.getRGB(1, 0) >>> 24, "tip points upward in the GUI");
+        assertEquals(0, upright.getRGB(0, 0) >>> 24, "top corners must be transparent");
+        assertEquals(255, upright.getRGB(0, 2) >>> 24, "crystal base belongs at bottom");
+    }
+
     @Test void flipsOversizedPictureInPictureAlphaVertically() {
         ByteBuffer pixels = ByteBuffer.allocate(2 * 2 * 4);
         // Top GPU row contains one pixel; the displayed PIP is vertically flipped.

@@ -1044,12 +1044,14 @@ public class SeedMapScreen extends Screen {
         context.enableScissor(viewport.left, viewport.top, viewport.left + viewport.width, viewport.top + viewport.height);
         boolean dots = !MarkerVisibility.iconAt(viewport.scale, config.markerDensity);
         visibleClusters = config.hideCrowdedInsteadOfClustering
-                ? MarkerDisplayLayout.hideInsteadOfCluster(markers,
+                ? MarkerDisplayLayout.hideWorldAligned(markers,
+                        MapMarker::blockX, MapMarker::blockZ,
                         m -> viewport.worldToScreenX(m.blockX()),
                         m -> viewport.worldToScreenZ(m.blockZ()),
                         viewport.left, viewport.top, viewport.width, viewport.height,
                         config.markerDensity, viewport.scale)
-                : MarkerDisplayLayout.layout(markers,
+                : MarkerDisplayLayout.layoutWorldAligned(markers,
+                        MapMarker::blockX, MapMarker::blockZ,
                         m -> viewport.worldToScreenX(m.blockX()),
                         m -> viewport.worldToScreenZ(m.blockZ()),
                         viewport.left, viewport.top, viewport.width, viewport.height,
