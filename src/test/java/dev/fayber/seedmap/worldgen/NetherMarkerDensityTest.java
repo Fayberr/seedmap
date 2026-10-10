@@ -71,12 +71,25 @@ class NetherMarkerDensityTest {
                         0, 0, VIEW_WIDTH, VIEW_HEIGHT, MarkerVisibility.BALANCED, zoom);
                 int displayed = icons.size();
                 int budget = MarkerDisplayLayout.budget(MarkerVisibility.BALANCED, zoom);
-                System.out.printf("NETHER_DENSITY seed=%d center=%d,%d zoom=%d confirmed=%d postFilter=%d onScreen=%d budget=%d%n",
-                        seed, centerX, centerZ, zoom, all.size(), visible.size(), displayed, budget);
+                var directIcons = MarkerDisplayLayout.hideInsteadOfCluster(visible,
+                        marker -> VIEW_WIDTH / 2.0 + (marker.blockX() - centerX) / (double) zoom,
+                        marker -> VIEW_HEIGHT / 2.0 + (marker.blockZ() - centerZ) / (double) zoom,
+                        0, 0, VIEW_WIDTH, VIEW_HEIGHT, MarkerVisibility.BALANCED, zoom);
+                System.out.printf("NETHER_DENSITY seed=%d center=%d,%d zoom=%d confirmed=%d postFilter=%d clustered=%d direct=%d budget=%d%n",
+                        seed, centerX, centerZ, zoom, all.size(), visible.size(),
+                        displayed, directIcons.size(), budget);
 
-                assertTrue(displayed <= budget, "too many map icons at zoom " + zoom);
+                assertTrue(displayed <= budget, "too many map icon groups at zoom " + zoom);
                 assertEquals(visible.size(), icons.stream().mapToInt(c -> c.size()).sum(),
-                        "marker grouping cannot lose source POIs");
+                        "legacy grouping must retain all source POIs");
+                assertTrue(directIcons.size() <= budget);
+                assertTrue(directIcons.stream().allMatch(c -> c.size() == 1),
+                        "direct-hide mode must never aggregate POIs");
+                if (zoom == 16) {
+                    assertEquals(0, visible.size(),
+                            "default Nether markers should vanish entirely at distant zoom");
+                    assertTrue(directIcons.isEmpty());
+                }
                 samples++;
             }
         }
