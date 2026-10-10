@@ -106,7 +106,8 @@ public final class SeedMapSettings extends Screen {
         SeedMapConfig config = SeedMapClient.config();
         int widthPx = Math.min(380, width - 28);
         int x = (width - widthPx) / 2;
-        int y = 55;
+        int y = 52;
+        int rowHeight = Math.min(27, Math.max(21, (height - 96) / 6));
         controls.add(new SegmentedControl(x, 28, widthPx, 21, List.of(
                 SegmentedControl.Segment.of(Component.literal("Map"), () -> page == 0, () -> {
                     page = 0;
@@ -129,25 +130,25 @@ public final class SeedMapSettings extends Screen {
                         }));
             }
             controls.add(new SegmentedControl(x, y, widthPx, 21, choices));
-            y += 27;
+            y += rowHeight;
             toggle("Spawn marker", () -> config.showSpawnMarker,
                     () -> config.showSpawnMarker = !config.showSpawnMarker, x, y, widthPx);
-            y += 27;
+            y += rowHeight;
             toggle("Waypoint marker", () -> config.showWaypointMarker,
                     () -> config.showWaypointMarker = !config.showWaypointMarker, x, y, widthPx);
-            y += 27;
+            y += rowHeight;
             toggle("Facing rays", () -> config.showFacing,
                     () -> config.showFacing = !config.showFacing, x, y, widthPx);
-            y += 27;
+            y += rowHeight;
             toggle("Chunk / region grid", () -> config.showGrid,
                     () -> config.showGrid = !config.showGrid, x, y, widthPx);
-            y += 27;
+            y += rowHeight;
             toggle("Slime chunks", () -> config.showSlimeChunks,
                     () -> config.showSlimeChunks = !config.showSlimeChunks, x, y, widthPx);
         } else {
             toggle("Waypoint beam", () -> config.showBeam,
                     () -> config.showBeam = !config.showBeam, x, y, widthPx);
-            y += 27;
+            y += rowHeight;
             toggle("Persistent tile cache", () -> config.diskCache,
                     () -> config.diskCache = !config.diskCache, x, y, widthPx);
         }

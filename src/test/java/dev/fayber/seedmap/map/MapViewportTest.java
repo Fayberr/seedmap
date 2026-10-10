@@ -54,13 +54,13 @@ class MapViewportTest {
 
     @Test
     void zoomIsClamped() {
-        assertEquals(128.0, MapViewport.MAX_SCALE, 1e-9);
+        assertEquals(4096.0, MapViewport.MAX_SCALE, 1e-9);
         MapViewport v = viewport();
         v.zoomAt(0, 0, 1e-9);
         assertEquals(MapViewport.MIN_SCALE, v.scale, 1e-9);
         v.zoomAt(0, 0, 1e9);
-        assertEquals(128.0, v.scale, 1e-9);
-        assertEquals(5, v.lod(), "the clamped scale still lands on the coarsest LOD");
+        assertEquals(4096.0, v.scale, 1e-9);
+        assertEquals(10, v.lod(), "the clamped scale uses the extended map LOD");
     }
 
     @Test
