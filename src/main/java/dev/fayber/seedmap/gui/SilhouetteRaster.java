@@ -1,50 +1,66 @@
 package dev.fayber.seedmap.gui;
 
 import java.awt.image.BufferedImage;
-import java.util.List;
 
 /**
- * Rasterises an icon's alpha contour once into a thin, uniformly lit white ring.
- * Work scales with icon texture resolution, not the number of rendered frames.
+ * A stable one-physical-pixel outer alpha stroke based on the icon's actual
+ * transparency. Unlike marching-squares contours, alpha dilation preserves
+ * sharp corners, small gaps and staircase-like pixel art.
+ *
+ * Executed ONCE per distinct icon + GUI scale; the result is uploaded as a
+ * texture and rendered with one draw call on subsequent frames.
  */
 public final class SilhouetteRaster {
     public static final int MARGIN = 2;
-    public static final int SIZE = 16 + 2 * MARGIN;
+    public static final int SIZE = 16 + MARGIN * 2;
 
     private SilhouetteRaster() {}
 
-    /** ARGB image, suitable for uploading as a cached dynamic texture. */
-    public static int[] rasterize(BufferedImage image, int scale) {
-        int multiplier = Math.clamp(scale, 1, 8);
-        int dimension = SIZE * multiplier;
-        int[] pixels = new int[dimension * dimension];
-        List<SilhouetteContour.Segment> edges = SilhouetteContour.trace(image);
-        if (edges.isEmpty()) return pixels;
+    public static int[] rasterize(BufferedImage source, int guiScale) {
+        int scale = Math.clamp(guiScale, 1, 8);
+        int size = SIZE * scale;
+        int[] pixels = new int[size * size];
+        if (source == null || source.getWidth() < 1 || source.getHeight() < 1) return pixels;
 
-        for (SilhouetteContour.Segment edge : edges) {
-            float ax = (edge.x1() + MARGIN) * multiplier;
-            float ay = (edge.y1() + MARGIN) * multiplier;
-            float bx = (edge.x2() + MARGIN) * multiplier;
-            float by = (edge.y2() + MARGIN) * multiplier;
-            float dx = bx - ax, dy = by - ay;
-            float lengthSq = dx * dx + dy * dy;
-            int minX = Math.max(0, (int) Math.floor(Math.min(ax, bx) - 2));
-            int minY = Math.max(0, (int) Math.floor(Math.min(ay, by) - 2));
-            int maxX = Math.min(dimension - 1, (int) Math.ceil(Math.max(ax, bx) + 2));
-            int maxY = Math.min(dimension - 1, (int) Math.ceil(Math.max(ay, by) + 2));
-            for (int py = minY; py <= maxY; py++) {
-                for (int px = minX; px <= maxX; px++) {
-                    float vx = px + 0.5f - ax, vy = py + 0.5f - ay;
-                    float t = lengthSq < 1e-6f ? 0 : Math.clamp((vx * dx + vy * dy) / lengthSq, 0, 1);
-                    float distance = (float) Math.hypot(vx - t * dx, vy - t * dy);
-                    // A 1.35-physical-pixel anti-aliased stroke, with brightness
-                    // independent of edge orientation and GUI scale.
-                    int alpha = Math.clamp(Math.round((1.45f - distance) * 225), 0, 225);
-                    int index = py * dimension + px;
-                    if (alpha > (pixels[index] >>> 24)) pixels[index] = (alpha << 24) | 0xFFFFFF;
+        for (int sy = 0; sy < size; sy++) {
+            for (int sx = 0; sx < size; sx++) {
+                // Convert physical output pixel centers back into 16x16 GUI icon coordinates.
+                float px = (sx + 0.5f) / scale - MARGIN;
+                float py = (sy + 0.5f) / scale - MARGIN;
+                float inside = alpha(source, px, py);
+                float dilated = inside;
+
+                // Expand the *actual mask*, not guessed polylines. A 1.5-physical-
+                // pixel round kernel gives even coverage for horizontal, vertical,
+                // diagonal and corner edges.
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        if (dx == 0 && dy == 0) continue;
+                        dilated = Math.max(dilated,
+                                alpha(source, px + dx / (float) scale,
+                                        py + dy / (float) scale));
+                    }
                 }
+                // Outside-only stroke: the opaque original icon is drawn on top.
+                int opacity = Math.clamp(Math.round((dilated - inside) * 235), 0, 235);
+                pixels[sy * size + sx] = (opacity << 24) | 0xFFFFFF;
             }
         }
         return pixels;
+    }
+
+    private static float alpha(BufferedImage image, float guiX, float guiY) {
+        float x = guiX * image.getWidth() / 16f - 0.5f;
+        float y = guiY * image.getHeight() / 16f - 0.5f;
+        int ix = (int) Math.floor(x), iy = (int) Math.floor(y);
+        float tx = x - ix, ty = y - iy;
+        float top = pixel(image, ix, iy) * (1f - tx) + pixel(image, ix + 1, iy) * tx;
+        float bottom = pixel(image, ix, iy + 1) * (1f - tx) + pixel(image, ix + 1, iy + 1) * tx;
+        return top * (1f - ty) + bottom * ty;
+    }
+
+    private static float pixel(BufferedImage image, int x, int y) {
+        if (x < 0 || y < 0 || x >= image.getWidth() || y >= image.getHeight()) return 0f;
+        return ((image.getRGB(x, y) >>> 24) & 255) / 255f;
     }
 }
