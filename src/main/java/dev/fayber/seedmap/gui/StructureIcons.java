@@ -80,6 +80,28 @@ public final class StructureIcons {
         });
     }
 
+    /**
+     * Experimental low-opacity 1 px perimeter. This intentionally uses a neutral
+     * frame rather than an item-specific shader, so map sprites, PNGs and vanilla
+     * item-rendered markers receive the same subtle treatment.
+     */
+    public static void drawIcon(GuiGraphicsExtractor context, Identifier structureId,
+                                int x, int y, boolean faintOutline) {
+        if (faintOutline) {
+            final int edge = 0x38FFFFFF;
+            final int corner = 0x18FFFFFF;
+            context.fill(x + 1, y - 1, x + 15, y, edge);
+            context.fill(x + 1, y + 16, x + 15, y + 17, edge);
+            context.fill(x - 1, y + 1, x, y + 15, edge);
+            context.fill(x + 16, y + 1, x + 17, y + 15, edge);
+            context.fill(x, y, x + 1, y + 1, corner);
+            context.fill(x + 15, y, x + 16, y + 1, corner);
+            context.fill(x, y + 15, x + 1, y + 16, corner);
+            context.fill(x + 15, y + 15, x + 16, y + 16, corner);
+        }
+        drawIcon(context, structureId, x, y);
+    }
+
     public static void drawIcon(GuiGraphicsExtractor context, Identifier structureId, int x, int y) {
         if (structureId == null) {
             drawMapSprite(context, "red_x", x, y);
