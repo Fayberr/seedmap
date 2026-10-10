@@ -25,7 +25,9 @@ public final class NavigationPointer {
 
     // The first and last vertices connect automatically.
     private static final float[][] MAP_SHAPE = {
-            {32f, 6f}, {50f, 54f}, {33f, 45f}, {17f, 54f}
+            // Slightly asymmetric filled pointer, like the red map reference:
+            // a sharp nose, broad rear edge and only a shallow tail notch.
+            {32f, 6f}, {51f, 53f}, {30f, 43f}, {12f, 47f}
     };
     private static final float[][] HUD_SHAPE = {
             {6f, 23f}, {35f, 23f}, {35f, 13f}, {60f, 32f},
