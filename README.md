@@ -17,6 +17,7 @@ Press **M** to open the map. It predicts biomes and structure locations from the
 - Coordinates, distance measurement, chunk grid, spawn marker and PNG export.
 - Background tile generation and on-disk cache.
 - Per-server seed storage. No server mod required.
+- Optional Mod Menu integration: Mods → SeedMap → Configure opens the existing settings screen.
 
 ## Install and use
 

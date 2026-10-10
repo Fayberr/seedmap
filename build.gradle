@@ -7,12 +7,20 @@ version = project.version
 group = project.group
 base { archivesName = project.archives_base_name }
 
-repositories { mavenCentral() }
+repositories {
+    mavenCentral()
+    maven {
+        name = 'TerraformersMC'
+        url = 'https://maven.terraformersmc.com/'
+    }
+}
 
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+    // Optional compile-time integration: not bundled or required at runtime.
+    modCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
 
     testImplementation "net.fabricmc:fabric-loader-junit:${project.loader_version}"
     testImplementation platform("org.junit:junit-bom:5.11.4")
