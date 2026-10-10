@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import dev.fayber.seedmap.config.SeedMapConfig;
 import dev.fayber.seedmap.gui.SeedMapScreen;
 import dev.fayber.seedmap.gui.IconSilhouette;
+import dev.fayber.seedmap.gui.NavigationPointer;
 import dev.fayber.seedmap.gui.StructureIcons;
 import dev.fayber.seedmap.map.MapWorker;
 import dev.fayber.seedmap.waypoint.BeamRenderer;
@@ -62,6 +63,7 @@ public final class SeedMapClient implements ClientModInitializer {
                         // TextureManager is owned by the client thread.
                         net.minecraft.client.Minecraft.getInstance().execute(() -> {
                             IconSilhouette.clearCache();
+                            NavigationPointer.clearCache();
                             StructureIcons.clearIconCache();
                         });
                     }
