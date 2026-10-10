@@ -33,7 +33,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.AbstractButton;
-import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -88,9 +87,9 @@ public class SeedMapScreen extends Screen {
     private boolean dragging;
     private final MapPointerGesture mapPointer = new MapPointerGesture();
     private int featureGroup; // 0: all, 1: common, 2: major
-    private EditBox seedField;
+    private SeedMapTextInput seedField;
     private AbstractButton applyButton;
-    private EditBox goField;
+    private SeedMapTextInput goField;
     private AbstractButton goButton;
     private String flash;
     private long flashUntil;
@@ -108,7 +107,7 @@ public class SeedMapScreen extends Screen {
     private AbstractButton targetButton;
     private AbstractButton settingsButton;
     private StructurePickerWidget picker;
-    private EditBox pickerFilter;
+    private SeedMapTextInput pickerFilter;
     private AbstractButton searchButton;
     private ResultsListWidget resultsList;
     private final List<SegmentedControl> controls = new ArrayList<>();
@@ -172,7 +171,9 @@ public class SeedMapScreen extends Screen {
         int y = headerHeight() + PAD + 5;
         closePicker();
         for (AbstractWidget w : new AbstractWidget[]{
-                seedField, applyButton, goField, goButton, targetButton, searchButton, resultsList, settingsButton}) {
+                seedField == null ? null : seedField.widget(), applyButton,
+                goField == null ? null : goField.widget(), goButton, targetButton,
+                searchButton, resultsList, settingsButton}) {
             if (w != null) removeWidget(w);
         }
         seedField = null;
@@ -206,13 +207,14 @@ public class SeedMapScreen extends Screen {
         int goW = width < 730
                 ? Math.max(80, Math.min(228, width - goX - 58))
                 : Math.max(70, Math.min(168, actionsX - goX - 50));
-        goField = new EditBox(font, goX, goY, goW, 21,
+        goField = new SeedMapTextInput(font, goX, goY, goW, 21,
                 Component.translatable("seedmap.screen.goto"));
         goField.setMaxLength(48);
         goField.setHint(Component.literal("Go to X, Z"));
+        goField.setValidator(value -> value.isBlank() || CoordinateParser.parse(value).isPresent());
         goField.setResponder(value -> goField.setTextColor(
                 value.isBlank() || CoordinateParser.parse(value).isPresent() ? 0xFFF0F0F0 : 0xFFFF7373));
-        addRenderableWidget(goField);
+        addRenderableWidget(goField.widget());
         goButton = new SeedMapButton(goX + goW + 5, goY, 40, 21,
                 Component.translatable("seedmap.screen.go"), this::goToTyped);
         addRenderableWidget(goButton);
@@ -311,14 +313,15 @@ public class SeedMapScreen extends Screen {
         worldCaptionY = y;
         y += 14;
         boolean singleplayer = minecraft.getSingleplayerServer() != null;
-        seedField = new EditBox(font, px, y, pw - 48, 19,
+        seedField = new SeedMapTextInput(font, px, y, pw - 48, 19,
                 Component.translatable("seedmap.screen.seed_placeholder"));
         seedField.setMaxLength(64);
         seedField.setHint(Component.literal("World seed"));
+        seedField.setValidator(value -> value.isBlank() || SeedParser.parse(value).isPresent());
         seedField.setResponder(this::updateSeedFieldColor);
         seedField.setValue(currentSeedText());
         seedField.setEditable(!singleplayer);
-        addRenderableWidget(seedField);
+        addRenderableWidget(seedField.widget());
         applyButton = new SeedMapButton(px + pw - 44, y, 44, 19,
                 Component.translatable("seedmap.screen.apply"), this::applySeed);
         applyButton.active = !singleplayer;
@@ -505,7 +508,7 @@ public class SeedMapScreen extends Screen {
         int x = width - panelWidth() - w - 8;
         int y = headerHeight() + PAD;
         int h = Math.min(300, height - y - 10);
-        pickerFilter = new EditBox(font, x, y, w, BTN_H, Component.translatable("seedmap.screen.filter"));
+        pickerFilter = new SeedMapTextInput(font, x, y, w, BTN_H, Component.translatable("seedmap.screen.filter"));
         pickerFilter.setHint(Component.translatable("seedmap.screen.filter"));
         pickerFilter.setMaxLength(32);
         picker = new StructurePickerWidget(minecraft, x, y + BTN_H + GAP, w, h - BTN_H - GAP, ids, biomeMode, id -> {
@@ -513,15 +516,15 @@ public class SeedMapScreen extends Screen {
             closePicker();
         });
         pickerFilter.setResponder(text -> picker.filter(text));
-        addRenderableWidget(pickerFilter);
+        addRenderableWidget(pickerFilter.widget());
         addRenderableWidget(picker);
-        setFocused(pickerFilter);
+        setFocused(pickerFilter.widget());
         pickerFilter.setFocused(true);
     }
 
     private void closePicker() {
         if (picker != null) removeWidget(picker);
-        if (pickerFilter != null) removeWidget(pickerFilter);
+        if (pickerFilter != null) removeWidget(pickerFilter.widget());
         picker = null;
         pickerFilter = null;
     }
