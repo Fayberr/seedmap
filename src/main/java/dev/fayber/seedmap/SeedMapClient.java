@@ -58,7 +58,7 @@ public final class SeedMapClient implements ClientModInitializer {
                     }
 
                     @Override
-                    public void reload(ResourceManager manager) {
+                    public void onResourceManagerReload(ResourceManager manager) {
                         // TextureManager is owned by the client thread.
                         net.minecraft.client.Minecraft.getInstance().execute(() -> {
                             IconSilhouette.clearCache();
