@@ -765,8 +765,32 @@ public class SeedMapScreen extends Screen {
         int bx = (int) Math.floor(viewport.screenToWorldX(mouseX));
         int bz = (int) Math.floor(viewport.screenToWorldZ(mouseY));
         List<String> lines = new ArrayList<>();
+        // Explain the two special map symbols directly instead of treating them as generic biomes.
+        String specialLabel = null;
+        String specialLocation = null;
+        if (config.showWaypointMarker) {
+            var waypoint = WaypointState.get().orElse(null);
+            if (waypoint != null && waypoint.dimension().equals(session.dimension().levelId())
+                    && Math.abs(viewport.worldToScreenX(waypoint.x()) - mouseX) <= 10
+                    && Math.abs(viewport.worldToScreenZ(waypoint.z()) - mouseY) <= 10) {
+                specialLabel = "Waypoint: " + waypoint.name();
+                specialLocation = waypoint.x() + ", " + waypoint.z();
+            }
+        }
+        if (specialLabel == null && config.showSpawnMarker && minecraft.level != null) {
+            var spawn = minecraft.level.getRespawnData();
+            if (spawn.dimension().identifier().equals(session.dimension().levelId())
+                    && Math.abs(viewport.worldToScreenX(spawn.pos().getX()) - mouseX) <= 10
+                    && Math.abs(viewport.worldToScreenZ(spawn.pos().getZ()) - mouseY) <= 10) {
+                specialLabel = "World spawn";
+                specialLocation = spawn.pos().getX() + ", " + spawn.pos().getZ();
+            }
+        }
         MarkerClusterer.Cluster<MapMarker> hovered = clusterAt(mouseX, mouseY);
-        if (hovered != null) {
+        if (specialLabel != null) {
+            lines.add(specialLabel);
+            lines.add(specialLocation);
+        } else if (hovered != null) {
             if (hovered.size() == 1) {
                 MapMarker m = hovered.members().get(0);
                 String name = StructureIcons.displayName(m.id());
@@ -807,7 +831,7 @@ public class SeedMapScreen extends Screen {
     }
 
     private MarkerClusterer.Cluster<MapMarker> clusterAt(double mx, double my) {
-        boolean dots = TileKey.blocksPerPixel(viewport.lod()) >= 64;
+        boolean dots = !MarkerVisibility.iconAt(viewport.scale, config.markerDensity);
         double hitRadius = dots ? 5 : 8;
         for (MarkerClusterer.Cluster<MapMarker> cluster : visibleClusters) {
             if (Math.abs(mx - cluster.x()) <= hitRadius && Math.abs(my - cluster.y()) <= hitRadius) return cluster;
