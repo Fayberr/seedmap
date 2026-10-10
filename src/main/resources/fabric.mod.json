@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "seedmap",
+  "version": "${version}",
+  "name": "SeedMap",
+  "description": "Seed map with biomes, structures and waypoints directly in Minecraft.",
+  "authors": [
+    "Fayber"
+  ],
+  "license": "GPL-3.0-or-later",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.fayber.seedmap.SeedMapClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "fabric-api": "*",
+    "minecraft": "~26.3",
+    "java": ">=25"
+  }
+}
