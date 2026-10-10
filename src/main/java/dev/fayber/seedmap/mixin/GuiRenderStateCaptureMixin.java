@@ -11,7 +11,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * Associates SeedMap's own item icons with their exact render state.
  * This works for both regular atlas items and oversized 3D/PIP items,
- * without guessing their positions during the later render pass.
+ * without guessing their positions during the later render pass. The
+ * request lifetime is tied to GuiRenderer.render, not GuiRenderState.reset.
  */
 @Mixin(GuiRenderState.class)
 public abstract class GuiRenderStateCaptureMixin {
@@ -20,8 +21,4 @@ public abstract class GuiRenderStateCaptureMixin {
         RenderedItemCapture.onItemQueued(item);
     }
 
-    @Inject(method = "reset", at = @At("HEAD"))
-    private void seedmap$clearFrame(CallbackInfo ci) {
-        RenderedItemCapture.endFrame();
-    }
 }

@@ -41,6 +41,26 @@ class RenderedItemCaptureTest {
         }
     }
 
+    @Test void renderedCubeSilhouetteProducesStairStepOutlineWithoutSquareBorder() {
+        ByteBuffer pixels = ByteBuffer.allocate(16 * 16 * 4);
+        // Oblique cube-like projection with transparent outer corners.
+        for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) {
+            pixels.put((byte) 140).put((byte) 140).put((byte) 140);
+            boolean occupied = y >= 3 && y < 13 && x >= 3 + Math.abs(8-y)/2
+                    && x < 13 - Math.abs(8-y)/2;
+            pixels.put((byte) (occupied ? 255 : 0));
+        }
+        pixels.flip();
+        var rendered = RenderedItemCapture.decodeAlpha(pixels, 16, 16);
+        assertNotNull(rendered);
+        int[] outline = SilhouetteRaster.rasterize(rendered, 3);
+        int side = SilhouetteRaster.SIZE * 3;
+        assertEquals(0, outline[0]);
+        assertEquals(0, outline[side * side - 1]);
+        assertTrue(java.util.Arrays.stream(outline).anyMatch(color -> (color >>> 24) > 180),
+                "Actual 3D-model alpha must produce a nonempty pixel outline");
+    }
+
     @Test void doesNotAcceptTransparentOrIncompleteReadbacks() {
         assertNull(RenderedItemCapture.decodeAlpha(ByteBuffer.allocate(64), 4, 4));
         assertNull(RenderedItemCapture.decodeAlpha(ByteBuffer.allocate(30), 4, 4));

@@ -11,7 +11,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Minecraft already renders each unique item model into its GUI atlas.
- * Observe that finished atlas slot only when SeedMap asks for its silhouette.
+ * Observe the atlas slot only when SeedMap asks for its silhouette.
+ * Copy that slot after the GUI render completes, not during preparation.
  * The original item draw is never modified.
  */
 @Mixin(GuiRenderer.class)
@@ -20,5 +21,10 @@ public abstract class GuiRendererCaptureMixin {
     private void seedmap$captureItem(GuiItemRenderState item,
                                       GuiItemAtlas.SlotView slot, CallbackInfo ci) {
         RenderedItemCapture.onResolved(item, slot);
+    }
+
+    @Inject(method = "render", at = @At("TAIL"))
+    private void seedmap$copyAfterGuiRender(CallbackInfo ci) {
+        RenderedItemCapture.onFrameRendered();
     }
 }

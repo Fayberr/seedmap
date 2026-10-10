@@ -5,10 +5,9 @@ import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import java.awt.image.BufferedImage;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 import dev.fayber.seedmap.SeedMapClient;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.render.GuiItemAtlas;
@@ -19,24 +18,31 @@ import net.minecraft.resources.Identifier;
  * Copies the actual finished GUI item model (including 3D models and active
  * resource packs) from Minecraft 26.3's own cached item atlas.
  *
- * The copy runs asynchronously, once per structure type. At most two small
- * item-sized readbacks may be in flight. There is NO extra 3D render, GPU
- * readback, or CPU image analysis in steady-state map frames.
+ * Capture is queued during vanilla's item preparation and copied only after
+ * GuiRenderer.render has finished its item-atlas and PIP render passes.
+ * At most two one-off readbacks are in flight; steady-state draws use cached
+ * silhouettes and perform no GPU readbacks.
  *
- * Requests are associated with the exact GuiItemRenderState when
- * GuiRenderState.addItem is called. Matching only x/y was unreliable when
- * duplicate icons, pose transforms or moving map markers shared positions.
+ * Requests are associated with the exact GuiItemRenderState in addItem.
+ * Failures are rate-limited and retried instead of permanently blacklisting
+ * model outlines until resource reload.
  */
 public final class RenderedItemCapture {
     private static final int MAX_IN_FLIGHT = 2;
     private record Request(Identifier structure, int epoch) {}
+    private record Pending(Identifier structure, int generation,
+                           com.mojang.renderpearl.api.textures.GpuTexture texture,
+                           int x, int y, int width, int height, boolean flipY) {}
 
     private static final Map<GuiItemRenderState, Request> TARGETS = new IdentityHashMap<>();
     private static final Map<Identifier, GuiItemRenderState> LAST_TARGET = new HashMap<>();
     private static final Map<Identifier, BufferedImage> IMAGES = new HashMap<>();
-    private static final Set<Identifier> IN_FLIGHT = new HashSet<>();
-    private static final Set<Identifier> UNSUPPORTED = new HashSet<>();
+    private static final Map<Identifier, Pending> PENDING = new LinkedHashMap<>();
+    private static final Map<Identifier, Boolean> IN_FLIGHT = new HashMap<>();
+    private static final Map<Identifier, Integer> RETRY_AFTER = new HashMap<>();
+    private static final Map<Identifier, Integer> FAILURES = new HashMap<>();
     private static int epoch;
+    private static int frame;
     private static Identifier extractingStructure;
 
     private RenderedItemCapture() {}
@@ -45,11 +51,15 @@ public final class RenderedItemCapture {
         return IMAGES.get(structure);
     }
 
-    /** Called immediately around SeedMap's own item extraction, not the entire GUI frame. */
+    private static boolean shouldRequest(Identifier structure) {
+        return structure != null && !IMAGES.containsKey(structure)
+                && !IN_FLIGHT.containsKey(structure) && !PENDING.containsKey(structure)
+                && frame >= RETRY_AFTER.getOrDefault(structure, 0);
+    }
+
+    /** Called immediately around SeedMap's own item extraction. */
     public static void beginItem(Identifier structure) {
-        extractingStructure = structure != null && !IMAGES.containsKey(structure)
-                && !IN_FLIGHT.contains(structure) && !UNSUPPORTED.contains(structure)
-                ? structure : null;
+        extractingStructure = shouldRequest(structure) ? structure : null;
     }
 
     public static void endItem() {
@@ -65,8 +75,9 @@ public final class RenderedItemCapture {
         TARGETS.put(item, new Request(structure, epoch));
     }
 
-    /** GuiRenderState.reset runs after rendering the previous extracted frame. */
-    public static void endFrame() {
+    /** Do not clear targets from GuiRenderState.reset: the renderer may not
+     * have consumed those item objects yet. Cleanup runs after render instead. */
+    private static void endFrame() {
         TARGETS.clear();
         LAST_TARGET.clear();
         extractingStructure = null;
@@ -106,44 +117,68 @@ public final class RenderedItemCapture {
     private static void capture(GuiItemRenderState item,
                                 com.mojang.renderpearl.api.textures.GpuTexture texture,
                                 int x, int y, int w, int h, boolean flipY) {
-        Request requested = TARGETS.get(item);
-        if (requested == null || requested.epoch() != epoch) return;
-        Identifier structure = requested.structure();
-        if (IMAGES.containsKey(structure) || UNSUPPORTED.contains(structure)) {
-            TARGETS.remove(item);
-            LAST_TARGET.remove(structure, item);
-            return;
-        }
-        if (IN_FLIGHT.contains(structure) || IN_FLIGHT.size() >= MAX_IN_FLIGHT) return;
-        TARGETS.remove(item);
+        Request request = TARGETS.remove(item);
+        if (request == null || request.epoch() != epoch) return;
+        Identifier structure = request.structure();
         LAST_TARGET.remove(structure, item);
-
+        if (!shouldRequest(structure)) return;
         if (w < 8 || h < 8 || w > 256 || h > 256 || w != h
                 || x < 0 || y < 0 || x + w > texture.getWidth(0)
                 || y + h > texture.getHeight(0)) {
-            unsupported(structure, "Invalid GPU capture region " + x + "," + y + " " + w + "x" + h, null);
+            failed(structure, "Invalid GPU capture region " + x + "," + y
+                    + " " + w + "x" + h, null);
             return;
         }
-        final int generation = epoch;
+        // The slot may not have been drawn yet while GuiRenderer prepares its
+        // elements. Never issue the copy here: hold the texture and region
+        // until the final GUI render pass has finished.
+        PENDING.put(structure, new Pending(structure, epoch, texture, x, y, w, h, flipY));
+    }
+
+    /** Invoked from GuiRenderer.render(TAIL), after the GUI render pass closes. */
+    public static void onFrameRendered() {
+        frame++;
+        try {
+            var iterator = PENDING.values().iterator();
+            while (iterator.hasNext() && IN_FLIGHT.size() < MAX_IN_FLIGHT) {
+                Pending pending = iterator.next();
+                iterator.remove();
+                if (pending.generation() != epoch || !shouldRequest(pending.structure())) continue;
+                startCopy(pending);
+            }
+        } finally {
+            // These references belong to the frame that just finished.
+            // Resetting them earlier loses all 3D item capture requests.
+            PENDING.clear();
+            endFrame();
+        }
+    }
+
+    private static void startCopy(Pending pending) {
+        Identifier structure = pending.structure();
+        int w = pending.width(), h = pending.height();
         final GpuBuffer staging;
         try {
+            // The GPU backend handles its own row-pitch conversion for
+            // copyTextureToBuffer; the public API exposes a packed readback.
             staging = RenderSystem.getDevice().createBuffer(
                     () -> "SeedMap captured item silhouette",
                     GpuBuffer.USAGE_COPY_DST | GpuBuffer.USAGE_MAP_READ, (long) w * h * 4);
         } catch (RuntimeException error) {
-            unsupported(structure, "Could not allocate readback buffer", error);
+            failed(structure, "Could not allocate readback buffer", error);
             return;
         }
-        IN_FLIGHT.add(structure);
+        IN_FLIGHT.put(structure, Boolean.TRUE);
         try {
             RenderSystem.getDevice().createCommandEncoder().copyTextureToBuffer(
-                    texture, staging, 0L,
+                    pending.texture(), staging, 0L,
                     () -> Minecraft.getInstance().execute(
-                            () -> processReadback(structure, generation, staging, w, h, flipY)),
-                    0, x, y, w, h);
+                            () -> processReadback(structure, pending.generation(), staging,
+                                    w, h, pending.flipY())),
+                    0, pending.x(), pending.y(), w, h);
         } catch (RuntimeException error) {
             IN_FLIGHT.remove(structure);
-            unsupported(structure, "Could not start GPU copy", error);
+            failed(structure, "Could not copy rendered model", error);
             staging.close();
         }
     }
@@ -158,25 +193,33 @@ public final class RenderedItemCapture {
                 rendered = decodeAlpha(mapped.data(), width, height, flipY);
             }
             if (rendered == null) {
-                unsupported(structure, "GPU capture was fully transparent or incomplete", null);
+                failed(structure, "GPU capture was fully transparent or incomplete", null);
                 return;
             }
             IMAGES.put(structure, rendered);
+            RETRY_AFTER.remove(structure);
+            FAILURES.remove(structure);
             // The previous absence was cached: allow the next frame to bake a
             // single outline texture from the real 3D model's alpha channel.
             IconSilhouette.invalidate(structure);
         } catch (RuntimeException error) {
-            unsupported(structure, "GPU capture readback failed", error);
+            failed(structure, "GPU capture readback failed", error);
         } finally {
             if (generation == epoch) IN_FLIGHT.remove(structure);
             staging.close();
         }
     }
 
-    private static void unsupported(Identifier structure, String reason, Throwable error) {
-        if (UNSUPPORTED.add(structure)) {
-            if (error == null) SeedMapClient.LOGGER.warn("Cannot capture item outline for {}: {}", structure, reason);
-            else SeedMapClient.LOGGER.warn("Cannot capture item outline for {}: {}", structure, reason, error);
+    private static void failed(Identifier structure, String reason, Throwable error) {
+        int failures = FAILURES.merge(structure, 1, Integer::sum);
+        RETRY_AFTER.put(structure, frame + Math.min(600, failures * 120));
+        if (failures == 1 || failures % 10 == 0) {
+            if (error == null) SeedMapClient.LOGGER.warn(
+                    "Item silhouette capture for {} failed (attempt {}): {}",
+                    structure, failures, reason);
+            else SeedMapClient.LOGGER.warn(
+                    "Item silhouette capture for {} failed (attempt {}): {}",
+                    structure, failures, reason, error);
         }
     }
 
@@ -205,7 +248,10 @@ public final class RenderedItemCapture {
         epoch++;
         endFrame();
         IMAGES.clear();
+        PENDING.clear();
         IN_FLIGHT.clear();
-        UNSUPPORTED.clear();
+        RETRY_AFTER.clear();
+        FAILURES.clear();
+        frame = 0;
     }
 }
