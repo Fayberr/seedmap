@@ -81,23 +81,19 @@ public final class StructureIcons {
     }
 
     /**
-     * Experimental low-opacity 1 px perimeter. This intentionally uses a neutral
-     * frame rather than an item-specific shader, so map sprites, PNGs and vanilla
-     * item-rendered markers receive the same subtle treatment.
+     * Optional alpha-contour outline. The contour is calculated from the visible
+     * PNG silhouette instead of the square icon bounds. Texture PNG masks are
+     * supported for map atlas sprites, custom icons and flat item sprites.
      */
     public static void drawIcon(GuiGraphicsExtractor context, Identifier structureId,
-                                int x, int y, boolean faintOutline) {
-        if (faintOutline) {
-            final int edge = 0x38FFFFFF;
-            final int corner = 0x18FFFFFF;
-            context.fill(x + 1, y - 1, x + 15, y, edge);
-            context.fill(x + 1, y + 16, x + 15, y + 17, edge);
-            context.fill(x - 1, y + 1, x, y + 15, edge);
-            context.fill(x + 16, y + 1, x + 17, y + 15, edge);
-            context.fill(x, y, x + 1, y + 1, corner);
-            context.fill(x + 15, y, x + 16, y + 1, corner);
-            context.fill(x, y + 15, x + 1, y + 16, corner);
-            context.fill(x + 15, y + 15, x + 16, y + 16, corner);
+                                int x, int y, boolean shapeOutline) {
+        if (shapeOutline && structureId != null) {
+            Identifier custom = iconFor(structureId);
+            if (custom.equals(GENERIC)) custom = null;
+            Identifier decoration = MAP_SPRITES.get(structureId);
+            Item item = ITEMS.get(structureId);
+            IconSilhouette.draw(context, structureId, x, y,
+                    custom, decoration == null ? null : decoration.getPath(), item);
         }
         drawIcon(context, structureId, x, y);
     }
