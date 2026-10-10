@@ -9,7 +9,9 @@ Press **M** to open the map. It predicts biomes and structure locations from the
 - Overworld, Nether and End maps with pan and zoom.
 - Structure icons, toggleable types, biome and structure search.
 - Default-on clutter hiding without marker clustering: crowded icons are hidden at real positions instead of replaced with cluster counts.
-- Optional legacy clustering and an experimental faint white icon outline (off by default).
+- Optional legacy clustering and experimental white icon outlines (off by default).
+- Strict, unsmoothed 2-physical-pixel silhouette border: outlines follow pixel staircases and corners instead of rounding them off.
+- 3D item/model outlines use Minecraft 26.3's already rendered GUI item atlas (including oversized picture-in-picture models and resource packs), with only two asynchronous capture readbacks allowed at a time. Captured silhouettes are cached and invalidated by resource pack reloads. Note: GUI/atlas GPU-backend compatibility still requires an Ingame test.
 - Find amethyst geodes, show slime chunks and explore biome Y layers.
 - Search within configurable radii and place waypoints from the results.
 - HUD direction arrow and in-world waypoint beam.
