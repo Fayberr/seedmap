@@ -1,0 +1,1189 @@
+package dev.fayber.seedmap.gui;
+
+import dev.fayber.seedmap.SeedMapClient;
+import dev.fayber.seedmap.config.SeedParser;
+import dev.fayber.seedmap.config.SeedMapConfig;
+import dev.fayber.seedmap.map.CoordinateParser;
+import dev.fayber.seedmap.map.MapExporter;
+import dev.fayber.seedmap.map.MapMarker;
+import dev.fayber.seedmap.map.MapViewport;
+import dev.fayber.seedmap.map.MapWorker;
+import dev.fayber.seedmap.map.MarkerClusterer;
+import dev.fayber.seedmap.map.TileKey;
+import dev.fayber.seedmap.waypoint.ShareHandler;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Locale;
+import java.util.Set;
+import net.fabricmc.loader.api.FabricLoader;
+import dev.fayber.seedmap.worldgen.Dimension;
+import dev.fayber.seedmap.worldgen.RegionHit;
+import dev.fayber.seedmap.worldgen.SeedSource;
+import dev.fayber.seedmap.worldgen.SeedWorld;
+import dev.fayber.seedmap.waypoint.Waypoint;
+import dev.fayber.seedmap.waypoint.WaypointState;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.OptionalLong;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.level.ChunkPos;
+import org.lwjgl.sdl.SDLScancode;
+
+public class SeedMapScreen extends Screen {
+    protected static final int BACKGROUND = 0xFF121212;
+    protected static final int PANEL = 0xFF1A1A1A;
+    protected static final int PANEL_EDGE = 0xFF262626;
+    protected static final int SEPARATOR = 0xFF262626;
+    protected static final int TEXT = 0xFFF0F0F0;
+    protected static final int MUTED = 0xFFA3A3A3;
+    protected static final int PLACEHOLDER = 0xFF2A2A2A;
+    protected static final int FAILED = 0xFF5A1E1E;
+    protected static final int PANEL_WIDTH = 218;
+    private static final int PAD = 6;
+    private static final int SEG_H = 14;
+    private static final int BTN_H = 16;
+    private static final int GAP = 3;
+    private static final List<Integer> RADII = List.of(2000, 5000, 10000, 50000);
+    private static final List<Integer> BIOME_LAYERS = List.of(64, 32, 0, -40, -60);
+    private static final double ICON_CLUSTER_RADIUS = 12.0;
+    private static final double DOT_CLUSTER_RADIUS = 5.0;
+    private static final int GRID_LINE = 0x38FFFFFF;
+    private static final int REGION_LINE = 0x70FFFFFF;
+    private static final int FACING_LINE = 0x90FFFFFF;
+    private static final long FLASH_MILLIS = 2500;
+    private static final double FEATURE_MAX_SCALE = 4.0;
+
+    protected static MapSession session;
+    private static boolean sessionLoading;
+    private static String sessionError;
+    private static SessionKey loadingKey;
+    private static SessionKey errorKey;
+    private static SessionKey pendingKey;
+    protected static final MapViewport viewport = new MapViewport();
+    private static boolean viewportInitialized;
+    private static Identifier lastStructure = Identifier.withDefaultNamespace("village_plains");
+    private static Identifier lastBiome = Identifier.withDefaultNamespace("plains");
+    private static List<SearchResult> lastResults = List.of();
+    private static boolean biomeMode;
+    private static boolean searching;
+    private static Long lastAppliedSeed;
+    private static Dimension currentDimension = Dimension.OVERWORLD;
+
+    protected final SeedMapConfig config = SeedMapClient.config();
+    private boolean dragging;
+    private EditBox seedField;
+    private Button applyButton;
+    private EditBox goField;
+    private Button goButton;
+    private String flash;
+    private long flashUntil;
+    private ContextMenu menu;
+    private List<MarkerClusterer.Cluster<MapMarker>> visibleClusters = List.of();
+    private int lastMouseX;
+    private int lastMouseY;
+    private boolean measuring;
+    private double measureStartX;
+    private double measureStartZ;
+    private double measureEndX;
+    private double measureEndZ;
+    private boolean hasMeasurement;
+    private StructureGrid grid;
+    private Button targetButton;
+    private StructurePickerWidget picker;
+    private EditBox pickerFilter;
+    private Button searchButton;
+    private ResultsListWidget resultsList;
+    private final List<SegmentedControl> controls = new ArrayList<>();
+    private int gridTop;
+    private int hintY;
+    private int layerLabelY;
+    private int searchCaptionY;
+    private int statusY;
+
+    private record SessionKey(long seed, Dimension dimension) {}
+
+    public SeedMapScreen(Minecraft client) {
+        super(Component.translatable("seedmap.screen.title"));
+        if (client.player != null) {
+            currentDimension = Dimension.fromLevel(client.player.level().dimension());
+        }
+    }
+
+    private int panelX() {
+        return width - PANEL_WIDTH + PAD;
+    }
+
+    private int panelW() {
+        return PANEL_WIDTH - 2 * PAD;
+    }
+
+    @Override
+    protected void init() {
+        viewport.left = 0;
+        viewport.top = 0;
+        viewport.width = width - PANEL_WIDTH;
+        viewport.height = height;
+        if (!viewportInitialized) {
+            centerOnPlayer();
+        }
+
+        OptionalLong seed = SeedSource.resolve(minecraft, config);
+        if (seed.isPresent()) {
+            ensureSession(seed.getAsLong());
+        } else if (lastAppliedSeed != null) {
+            ensureSession(lastAppliedSeed);
+        } else {
+            clearSession();
+        }
+        buildPanel();
+    }
+
+    void buildPanel() {
+        int px = panelX();
+        int pw = panelW();
+        int y = PAD;
+        closePicker();
+        for (AbstractWidget w : new AbstractWidget[]{seedField, applyButton, goField, goButton, targetButton, searchButton, resultsList}) {
+            if (w != null) removeWidget(w);
+        }
+        controls.clear();
+
+        y += 12;
+        boolean singleplayer = minecraft.getSingleplayerServer() != null;
+        seedField = new EditBox(font, px, y, pw - 40, BTN_H, Component.translatable("seedmap.screen.seed_placeholder"));
+        seedField.setMaxLength(64);
+        seedField.setHint(Component.translatable("seedmap.screen.seed_placeholder"));
+        seedField.setResponder(this::updateSeedFieldColor);
+        seedField.setValue(currentSeedText());
+        seedField.setEditable(!singleplayer);
+        addRenderableWidget(seedField);
+        applyButton = Button.builder(Component.translatable("seedmap.screen.apply"), b -> applySeed())
+                .bounds(px + pw - 36, y, 36, BTN_H).build();
+        applyButton.active = !singleplayer;
+        addRenderableWidget(applyButton);
+        y += BTN_H + GAP;
+
+        goField = new EditBox(font, px, y, pw - 40, BTN_H, Component.translatable("seedmap.screen.goto"));
+        goField.setMaxLength(48);
+        goField.setHint(Component.translatable("seedmap.screen.goto"));
+        goField.setResponder(text -> goField.setTextColor(
+                text.isBlank() || CoordinateParser.parse(text).isPresent() ? 0xFFFFFF : 0xFF5555));
+        addRenderableWidget(goField);
+        goButton = Button.builder(Component.translatable("seedmap.screen.go"), b -> goToTyped())
+                .bounds(px + pw - 36, y, 36, BTN_H).build();
+        addRenderableWidget(goButton);
+        y += BTN_H + GAP + 1;
+
+        List<SegmentedControl.Segment> dims = new ArrayList<>();
+        for (Dimension d : Dimension.values()) {
+            dims.add(SegmentedControl.Segment.of(d.displayName(), () -> currentDimension == d, () -> switchDimension(d)));
+        }
+        controls.add(new SegmentedControl(px, y, pw, SEG_H, dims));
+        y += SEG_H + GAP;
+
+        if (currentDimension == Dimension.OVERWORLD) {
+            int labelW = font.width(Component.translatable("seedmap.screen.biome_y")) + 4;
+            layerLabelY = y + (SEG_H - 8) / 2;
+            List<SegmentedControl.Segment> layers = new ArrayList<>();
+            for (int layer : BIOME_LAYERS) {
+                layers.add(SegmentedControl.Segment.of(Component.literal(Integer.toString(layer)),
+                        () -> config.biomeY == layer, () -> setBiomeY(layer)));
+            }
+            if (!BIOME_LAYERS.contains(config.biomeY)) config.biomeY = SeedWorld.SURFACE_Y;
+            controls.add(new SegmentedControl(px + labelW, y, pw - labelW, SEG_H, layers));
+            y += SEG_H + GAP;
+        } else {
+            layerLabelY = -1;
+        }
+        y += 4;
+
+        List<Identifier> structureIds;
+        if (session == null) {
+            structureIds = List.of(lastStructure);
+        } else {
+            List<Identifier> ids = new ArrayList<>(session.world().allStructures().stream().map(SeedWorld::idOf).toList());
+            ids.addAll(session.featureIds());
+            structureIds = List.copyOf(ids);
+        }
+        if (!structureIds.contains(lastStructure)) lastStructure = structureIds.get(0);
+        List<Identifier> biomeIds = session == null ? List.of(lastBiome) : session.world().allBiomes().stream()
+                .map(SeedWorld::idOf).toList();
+        if (!biomeIds.contains(lastBiome)) lastBiome = biomeIds.get(0);
+
+        gridTop = y + 10;
+        if (session != null) {
+            grid = new StructureGrid(px, gridTop, pw / StructureGrid.CELL, structureIds, session.enabledStructures(),
+                    this::saveToggles, id -> {
+                        setBiomeMode(false);
+                        selectTarget(id);
+                    }, () -> biomeMode ? null : lastStructure);
+            controls.add(new SegmentedControl(px + pw - 60, y - 1, 60, 10, List.of(
+                    SegmentedControl.Segment.of(Component.translatable("seedmap.screen.all"), () -> false, () -> grid.setAll(true)),
+                    SegmentedControl.Segment.of(Component.translatable("seedmap.screen.none"), () -> false, () -> grid.setAll(false)))));
+            y = gridTop + grid.height() + 2;
+            hintY = y;
+            y += 10;
+        } else {
+            grid = null;
+            hintY = -1;
+            y = gridTop;
+        }
+        y += 4;
+
+        searchCaptionY = y;
+        y += 10;
+        controls.add(new SegmentedControl(px, y, pw, SEG_H, List.of(
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.mode_structure"), () -> !biomeMode, () -> setBiomeMode(false)),
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.mode_biome"), () -> biomeMode, () -> setBiomeMode(true)))));
+        y += SEG_H + GAP;
+
+        targetButton = Button.builder(targetLabel(), b -> togglePicker(biomeMode ? biomeIds : structureIds))
+                .bounds(px, y, pw, BTN_H).build();
+        addRenderableWidget(targetButton);
+        y += BTN_H + GAP;
+
+        List<SegmentedControl.Segment> radii = new ArrayList<>();
+        for (int r : RADII) {
+            radii.add(SegmentedControl.Segment.of(Component.translatable("seedmap.screen.radius_short", r / 1000),
+                    () -> config.lastRadius == r, () -> {
+                        config.lastRadius = r;
+                        SeedMapClient.saveConfig();
+                    }));
+        }
+        if (!RADII.contains(config.lastRadius)) config.lastRadius = 5000;
+        controls.add(new SegmentedControl(px, y, pw, SEG_H, radii));
+        y += SEG_H + GAP;
+
+        searchButton = Button.builder(Component.translatable("seedmap.screen.search"), b -> runSearch())
+                .bounds(px, y, pw, BTN_H).build();
+        searchButton.active = session != null && !searching;
+        addRenderableWidget(searchButton);
+        y += BTN_H + GAP + 2;
+
+        int actionRow = height - PAD - SEG_H;
+        int toggleRow = actionRow - SEG_H - GAP;
+        statusY = toggleRow - 12;
+        int listBottom = statusY - 4;
+        resultsList = new ResultsListWidget(minecraft, pw, Math.max(20, listBottom - y), y);
+        resultsList.setX(px);
+        addRenderableWidget(resultsList);
+        refreshList();
+
+        controls.add(new SegmentedControl(px, toggleRow, pw, SEG_H, List.of(
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.beam"), () -> config.showBeam, () -> {
+                    config.showBeam = !config.showBeam;
+                    SeedMapClient.saveConfig();
+                }),
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.slime"), () -> config.showSlimeChunks, () -> {
+                    config.showSlimeChunks = !config.showSlimeChunks;
+                    SeedMapClient.saveConfig();
+                }),
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.grid"), () -> config.showGrid, () -> {
+                    config.showGrid = !config.showGrid;
+                    SeedMapClient.saveConfig();
+                }),
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.facing"), () -> config.showFacing, () -> {
+                    config.showFacing = !config.showFacing;
+                    SeedMapClient.saveConfig();
+                }))));
+        controls.add(new SegmentedControl(px, actionRow, pw, SEG_H, List.of(
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.center"), () -> false, this::centerOnPlayer),
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.copy"), () -> false, this::copyWaypoint),
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.export"), () -> false, this::exportMap),
+                SegmentedControl.Segment.of(Component.translatable("seedmap.screen.clear_waypoint"), () -> false, WaypointState::clear))));
+    }
+
+    private void exportMap() {
+        if (session == null) return;
+        List<MapExporter.Dot> dots = new ArrayList<>();
+        for (MarkerClusterer.Cluster<MapMarker> cluster : visibleClusters) {
+            for (MapMarker marker : cluster.members()) {
+                dots.add(new MapExporter.Dot(marker.blockX(), marker.blockZ(), StructureIcons.colorFor(marker.id()), 2));
+            }
+        }
+        for (SearchResult r : lastResults) {
+            dots.add(new MapExporter.Dot(r.x(), r.z(), 0xFFFFD700, 3));
+        }
+        WaypointState.get().filter(wp -> wp.dimension().equals(session.dimension().levelId()))
+                .ifPresent(wp -> dots.add(new MapExporter.Dot(wp.x(), wp.z(), 0xFFFF4040, 3)));
+        Path dir = FabricLoader.getInstance().getGameDir().resolve("seedmap").resolve("exports");
+        String base = "seedmap_" + session.seed() + "_" + session.dimension().name().toLowerCase(Locale.ROOT)
+                + "_" + (int) Math.floor(viewport.centerX) + "_" + (int) Math.floor(viewport.centerZ);
+        try {
+            Path file = MapExporter.export(viewport, session.tiles()::textureFor, minecraft.getTextureManager()::getTexture, dots, dir, base);
+            showFlash(Component.translatable("seedmap.screen.exported", file.getFileName().toString()).getString());
+            SeedMapClient.LOGGER.info("Exported map to {}", file);
+        } catch (IOException e) {
+            SeedMapClient.LOGGER.error("Map export failed", e);
+            showFlash(Component.translatable("seedmap.screen.export_failed").getString());
+        }
+    }
+
+    private void setBiomeY(int y) {
+        if (config.biomeY == y) return;
+        config.biomeY = y;
+        SeedMapClient.saveConfig();
+        if (session != null) session.setBiomeY(y);
+    }
+
+    private void goToTyped() {
+        CoordinateParser.parse(goField.getValue()).ifPresentOrElse(c -> {
+            viewport.centerX = c.x() + 0.5;
+            viewport.centerZ = c.z() + 0.5;
+            viewportInitialized = true;
+            goField.setValue("");
+            setFocused(null);
+        }, () -> goField.setTextColor(0xFF5555));
+    }
+
+    private void copyWaypoint() {
+        var wp = WaypointState.get();
+        int x = wp.map(Waypoint::x).orElse((int) Math.floor(viewport.centerX));
+        int z = wp.map(Waypoint::z).orElse((int) Math.floor(viewport.centerZ));
+        copyCoordinates(x, z);
+    }
+
+    private void copyCoordinates(int x, int z) {
+        String text = x + " " + z;
+        minecraft.keyboardHandler.setClipboard(text);
+        showFlash(Component.translatable("seedmap.screen.copied", text).getString());
+    }
+
+    private void showFlash(String text) {
+        flash = text;
+        flashUntil = System.currentTimeMillis() + FLASH_MILLIS;
+    }
+
+    private void openPointMenu(int screenX, int screenY, int bx, int bz) {
+        openPointMenu(screenX, screenY, bx, bz, null, null);
+    }
+
+    private void openPointMenu(int screenX, int screenY, int bx, int bz, String label, Identifier structureId) {
+        MapSession current = session;
+        if (current == null) return;
+        String name = label != null ? label : Component.translatable("seedmap.waypoint.marker", bx, bz).getString();
+        Component title = Component.literal(label != null ? label + "  " + bx + ", " + bz : bx + ", " + bz);
+        List<ContextMenu.Item> items = new ArrayList<>();
+        items.add(new ContextMenu.Item(Component.translatable("seedmap.menu.waypoint"),
+                () -> WaypointState.set(new Waypoint(name, bx, bz, structureId, current.dimension().levelId()))));
+        items.add(new ContextMenu.Item(Component.translatable("seedmap.menu.copy"), () -> copyCoordinates(bx, bz)));
+        items.add(new ContextMenu.Item(Component.translatable("seedmap.menu.share"), () -> {
+            ShareHandler.share(minecraft, name, bx, bz, current.dimension().levelId());
+            showFlash(Component.translatable("seedmap.menu.shared").getString());
+        }));
+        items.add(new ContextMenu.Item(Component.translatable("seedmap.menu.teleport"), () -> teleportTo(current, bx, bz)));
+        menu = new ContextMenu(font, screenX, screenY, width, height, title, items);
+    }
+
+    private void teleportTo(MapSession current, int bx, int bz) {
+        if (minecraft.player == null) return;
+        if (Dimension.fromLevel(minecraft.player.level().dimension()) != current.dimension()) {
+            showFlash(Component.translatable("seedmap.menu.teleport_other_dimension", current.dimension().displayName()).getString());
+            return;
+        }
+        if (current.dimension() == Dimension.NETHER) {
+            minecraft.player.connection.sendCommand("spreadplayers " + bx + " " + bz + " 0 1 under 122 false @s");
+        } else {
+            MapWorker.submit(() -> {
+                int y = current.world().surfaceHeight(bx, bz) + 1;
+                minecraft.execute(() -> {
+                    if (minecraft.player == null) return;
+                    minecraft.player.connection.sendCommand("tp @s " + bx + " " + y + " " + bz);
+                });
+            });
+        }
+        onClose();
+    }
+
+    private void saveToggles() {
+        if (session == null) return;
+        config.enabledStructures = session.enabledStructures().stream().map(Identifier::toString).sorted().toList();
+        SeedMapClient.saveConfig();
+    }
+
+    private void setBiomeMode(boolean biomes) {
+        if (biomeMode == biomes) return;
+        biomeMode = biomes;
+        closePicker();
+        if (targetButton != null) targetButton.setMessage(targetLabel());
+    }
+
+    private void refreshList() {
+        if (resultsList == null) return;
+        if (searching) {
+            resultsList.setStatus(Component.translatable("seedmap.screen.searching"));
+            return;
+        }
+        List<ResultsListWidget.Row> rows = new ArrayList<>();
+        for (SearchResult r : lastResults) {
+            String sub = r.x() + ", " + r.z() + "   " + Math.round(r.distance()) + " m";
+            rows.add(new ResultsListWidget.Row(r.name(), sub, r.structureId(), r.color(), () -> pickResult(r),
+                    () -> openPointMenu(lastMouseX, lastMouseY, r.x(), r.z(), r.name(), r.structureId())));
+        }
+        resultsList.setRows(rows, Component.translatable("seedmap.screen.no_results"));
+    }
+
+    private Component targetLabel() {
+        return Component.literal(StructureIcons.displayName(biomeMode ? lastBiome : lastStructure));
+    }
+
+    private void selectTarget(Identifier id) {
+        if (biomeMode) {
+            lastBiome = id;
+        } else {
+            lastStructure = id;
+        }
+        if (targetButton != null) targetButton.setMessage(targetLabel());
+    }
+
+    private void togglePicker(List<Identifier> ids) {
+        if (picker != null) {
+            closePicker();
+            return;
+        }
+        int w = 200;
+        int x = width - PANEL_WIDTH - w - 8;
+        int y = PAD;
+        int h = Math.min(300, height - y - 10);
+        pickerFilter = new EditBox(font, x, y, w, BTN_H, Component.translatable("seedmap.screen.filter"));
+        pickerFilter.setHint(Component.translatable("seedmap.screen.filter"));
+        pickerFilter.setMaxLength(32);
+        picker = new StructurePickerWidget(minecraft, x, y + BTN_H + GAP, w, h - BTN_H - GAP, ids, biomeMode, id -> {
+            selectTarget(id);
+            closePicker();
+        });
+        pickerFilter.setResponder(text -> picker.filter(text));
+        addRenderableWidget(pickerFilter);
+        addRenderableWidget(picker);
+        setFocused(pickerFilter);
+        pickerFilter.setFocused(true);
+    }
+
+    private void closePicker() {
+        if (picker != null) removeWidget(picker);
+        if (pickerFilter != null) removeWidget(pickerFilter);
+        picker = null;
+        pickerFilter = null;
+    }
+
+    private boolean pickerContains(double mx, double my) {
+        if (picker == null) return false;
+        int left = pickerFilter.getX() - 4;
+        int top = pickerFilter.getY() - 4;
+        int right = pickerFilter.getX() + pickerFilter.getWidth() + 4;
+        int bottom = picker.getY() + picker.getHeight() + 4;
+        return mx >= left && mx < right && my >= top && my < bottom;
+    }
+
+    private void runSearch() {
+        if (session == null) return;
+        boolean biomes = biomeMode;
+        Identifier targetId = biomes ? lastBiome : lastStructure;
+        int radiusBlocks = config.lastRadius;
+        MapSession current = session;
+        searching = true;
+        lastResults = List.of();
+        refreshList();
+        searchButton.active = false;
+        int cx = (int) Math.floor(viewport.centerX);
+        int cz = (int) Math.floor(viewport.centerZ);
+        ChunkPos center = new ChunkPos(cx >> 4, cz >> 4);
+        MapWorker.submit(() -> {
+            List<SearchResult> results;
+            try {
+                if (biomes) {
+                    results = current.world().findBiome(current.world().biome(targetId), cx, cz, radiusBlocks, 20, current.biomeY())
+                            .stream().map(SearchResult::of).toList();
+                } else if (current.world().isFeature(targetId)) {
+                    results = current.world().findFeatures(targetId, cx, cz, radiusBlocks, 20)
+                            .stream().map(hit -> SearchResult.of(hit, cx, cz)).toList();
+                } else {
+                    results = current.world().findStructures(current.world().structure(targetId), center, radiusBlocks / 16, 20)
+                            .stream().map(SearchResult::of).toList();
+                }
+            } catch (Throwable t) {
+                SeedMapClient.LOGGER.error("Search failed", t);
+                minecraft.execute(() -> {
+                    if (session != current) return;
+                    searching = false;
+                    if (minecraft.gui.screen() instanceof SeedMapScreen s) {
+                        s.resultsList.setStatus(Component.translatable("seedmap.screen.search_failed"));
+                        s.searchButton.active = true;
+                    }
+                });
+                return;
+            }
+            minecraft.execute(() -> {
+                if (session != current) return;
+                searching = false;
+                lastResults = results;
+                if (minecraft.gui.screen() instanceof SeedMapScreen s) {
+                    s.refreshList();
+                    s.searchButton.active = true;
+                }
+            });
+        });
+    }
+
+    protected void pickResult(SearchResult result) {
+        WaypointState.set(new Waypoint(result.name(), result.x(), result.z(), result.structureId(), session.dimension().levelId()));
+        onClose();
+    }
+
+    protected void centerOnPlayer() {
+        if (minecraft.player != null) {
+            viewport.centerX = minecraft.player.getX();
+            viewport.centerZ = minecraft.player.getZ();
+            viewportInitialized = true;
+        }
+    }
+
+    private String currentSeedText() {
+        if (minecraft.getSingleplayerServer() != null) {
+            return Long.toString(minecraft.getSingleplayerServer().overworld().getSeed());
+        }
+        return SeedSource.storageKey(minecraft).flatMap(config::seedFor).orElse("");
+    }
+
+    private void updateSeedFieldColor(String text) {
+        seedField.setTextColor(SeedParser.parse(text).isPresent() ? 0xFFFFFF : 0xFF5555);
+    }
+
+    private void applySeed() {
+        OptionalLong parsed = SeedParser.parse(seedField.getValue());
+        if (parsed.isEmpty()) {
+            updateSeedFieldColor(seedField.getValue());
+            return;
+        }
+        SeedSource.storageKey(minecraft).ifPresent(key -> {
+            config.putSeed(key, seedField.getValue().trim());
+            SeedMapClient.saveConfig();
+        });
+        long parsedSeed = parsed.getAsLong();
+        lastAppliedSeed = parsedSeed;
+        if (session != null && session.seed() == parsedSeed && session.dimension() == currentDimension) {
+            return;
+        }
+        errorKey = null;
+        sessionError = null;
+        ensureSession(parsedSeed);
+    }
+
+    private static void clearSession() {
+        if (session != null) session.close();
+        session = null;
+        sessionError = null;
+        errorKey = null;
+        sessionLoading = false;
+        loadingKey = null;
+        pendingKey = null;
+        viewportInitialized = false;
+        lastResults = List.of();
+        searching = false;
+    }
+
+    public static void resetForNewWorld() {
+        clearSession();
+        lastResults = List.of();
+        searching = false;
+        lastAppliedSeed = null;
+        viewportInitialized = false;
+    }
+
+    protected void ensureSession(long seed) {
+        SessionKey key = new SessionKey(seed, currentDimension);
+        if (session != null && session.seed() == seed && session.dimension() == key.dimension()) return;
+        if (errorKey != null) {
+            if (errorKey.equals(key)) return;
+            errorKey = null;
+            sessionError = null;
+        }
+        if (sessionLoading) {
+            if (key.equals(loadingKey)) return;
+            pendingKey = key;
+            return;
+        }
+        sessionLoading = true;
+        loadingKey = key;
+        MapWorker.submit(() -> {
+            try {
+                MapSession fresh = MapSession.open(seed, key.dimension(), minecraft.getTextureManager(), minecraft.getSingleplayerServer());
+                minecraft.execute(() -> {
+                    boolean seedChanged = session == null || session.seed() != seed || session.dimension() != key.dimension();
+                    if (session != null) session.close();
+                    session = fresh;
+                    lastResults = List.of();
+                    searching = false;
+                    if (minecraft.gui.screen() instanceof SeedMapScreen screen) {
+                        screen.buildPanel();
+                    }
+                    sessionLoading = false;
+                    loadingKey = null;
+                    if (seedChanged) viewportInitialized = false;
+                    takePendingExcept(key);
+                });
+            } catch (Throwable t) {
+                SeedMapClient.LOGGER.error("Could not build worldgen for seed {}", seed, t);
+                minecraft.execute(() -> {
+                    if (session != null) {
+                        session.close();
+                        session = null;
+                    }
+                    sessionError = Component.translatable("seedmap.screen.unsupported").getString();
+                    errorKey = key;
+                    lastResults = List.of();
+                    searching = false;
+                    if (minecraft.gui.screen() instanceof SeedMapScreen screen) {
+                        screen.buildPanel();
+                    }
+                    sessionLoading = false;
+                    loadingKey = null;
+                    takePendingExcept(key);
+                });
+            }
+        });
+    }
+
+    private void takePendingExcept(SessionKey justHandled) {
+        SessionKey next = pendingKey;
+        pendingKey = null;
+        if (next != null && !next.equals(justHandled)) {
+            currentDimension = next.dimension();
+            ensureSession(next.seed());
+        }
+    }
+
+    private void switchDimension(Dimension dimension) {
+        if (dimension == currentDimension) return;
+        currentDimension = dimension;
+        if (minecraft.player != null && Dimension.fromLevel(minecraft.player.level().dimension()) == dimension) {
+            centerOnPlayer();
+        } else {
+            viewport.centerX = 0;
+            viewport.centerZ = 0;
+        }
+        Long seed = session != null ? Long.valueOf(session.seed()) : lastAppliedSeed;
+        OptionalLong resolved = SeedSource.resolve(minecraft, config);
+        if (resolved.isPresent()) seed = resolved.getAsLong();
+        if (seed != null) ensureSession(seed);
+    }
+
+    @Override
+    public boolean isPauseScreen() {
+        return false;
+    }
+
+    @Override
+    public void extractBackground(GuiGraphicsExtractor context, int mouseX, int mouseY, float deltaTicks) {
+        context.fill(0, 0, width, height, BACKGROUND);
+    }
+
+    @Override
+    public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float deltaTicks) {
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
+        renderMap(context);
+        renderStructureIcons(context);
+        renderMeasurement(context);
+        renderMapOverlays(context, mouseX, mouseY);
+        int px = panelX();
+        int pw = panelW();
+        context.fill(width - PANEL_WIDTH, 0, width, height, PANEL);
+        context.fill(width - PANEL_WIDTH, 0, width - PANEL_WIDTH + 1, height, PANEL_EDGE);
+        context.text(font, title, px, PAD + 1, TEXT, false);
+        if (session != null && !session.world().isVanilla()) {
+            String tag = Component.translatable("seedmap.screen.modded").getString();
+            context.text(font, tag, px + pw - font.width(tag), PAD + 1, MUTED, false);
+        }
+        if (grid != null) {
+            context.text(font, Component.translatable("seedmap.screen.structures"), px, gridTop - 10, MUTED, false);
+            grid.render(context, font, mouseX, mouseY);
+            context.text(font, Component.translatable("seedmap.screen.grid_hint"), px, hintY, MUTED, false);
+        }
+        if (layerLabelY >= 0) {
+            context.text(font, Component.translatable("seedmap.screen.biome_y"), px, layerLabelY, MUTED, false);
+        }
+        context.fill(px, searchCaptionY - 3, px + pw, searchCaptionY - 2, SEPARATOR);
+        context.text(font, Component.translatable("seedmap.screen.search_caption"), px, searchCaptionY, MUTED, false);
+        if (!lastResults.isEmpty() && !searching) {
+            String count = Component.translatable("seedmap.screen.result_count", lastResults.size()).getString();
+            context.text(font, count, px + pw - font.width(count), searchCaptionY, MUTED, false);
+        }
+        context.fill(px, statusY - 3, px + pw, statusY - 2, SEPARATOR);
+        renderStatus(context, mouseX, mouseY);
+        for (SegmentedControl control : controls) control.render(context, font, mouseX, mouseY);
+        if (picker != null) {
+            context.fill(pickerFilter.getX() - 4, pickerFilter.getY() - 4, pickerFilter.getX() + pickerFilter.getWidth() + 4,
+                    picker.getY() + picker.getHeight() + 4, PANEL_EDGE);
+            context.fill(pickerFilter.getX() - 3, pickerFilter.getY() - 3, pickerFilter.getX() + pickerFilter.getWidth() + 3,
+                    picker.getY() + picker.getHeight() + 3, PANEL);
+        }
+        super.extractRenderState(context, mouseX, mouseY, deltaTicks);
+        if (menu == null && picker == null) renderHover(context, mouseX, mouseY);
+        if (menu != null) menu.render(context, font, mouseX, mouseY);
+    }
+
+    private void renderHover(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+        if (session == null || !viewport.contains(mouseX, mouseY) || dragging || measuring) return;
+        int bx = (int) Math.floor(viewport.screenToWorldX(mouseX));
+        int bz = (int) Math.floor(viewport.screenToWorldZ(mouseY));
+        List<String> lines = new ArrayList<>();
+        MarkerClusterer.Cluster<MapMarker> hovered = clusterAt(mouseX, mouseY);
+        if (hovered != null) {
+            if (hovered.size() == 1) {
+                MapMarker m = hovered.members().get(0);
+                String name = StructureIcons.displayName(m.id());
+                if (m.blockY() != null) name += "  y " + m.blockY();
+                lines.add(name);
+                lines.add(m.blockX() + ", " + m.blockZ());
+            } else {
+                java.util.Map<Identifier, Integer> counts = new java.util.LinkedHashMap<>();
+                for (MapMarker m : hovered.members()) counts.merge(m.id(), 1, Integer::sum);
+                int shown = 0;
+                for (var e : counts.entrySet()) {
+                    if (shown++ == 4) {
+                        lines.add("...");
+                        break;
+                    }
+                    lines.add(e.getValue() + " x " + StructureIcons.displayName(e.getKey()));
+                }
+                lines.add(Component.translatable("seedmap.screen.click_zoom").getString());
+            }
+        } else {
+            Identifier biome = SeedWorld.idOf(session.world().biomeAt(bx, session.biomeY(), bz));
+            lines.add(StructureIcons.displayName(biome));
+            lines.add(bx + ", " + bz);
+        }
+        int w = 0;
+        for (String line : lines) w = Math.max(w, font.width(line));
+        w += 6;
+        int h = lines.size() * 10 + 4;
+        int x = mouseX + 12;
+        int y = mouseY + 12;
+        if (x + w > viewport.left + viewport.width) x = mouseX - w - 4;
+        if (y + h > viewport.top + viewport.height) y = mouseY - h - 4;
+        context.fill(x - 1, y - 1, x + w + 1, y + h + 1, PANEL_EDGE);
+        context.fill(x, y, x + w, y + h, 0xF01E242B);
+        for (int i = 0; i < lines.size(); i++) {
+            context.text(font, lines.get(i), x + 3, y + 3 + i * 10, i == 0 ? TEXT : MUTED, false);
+        }
+    }
+
+    private MarkerClusterer.Cluster<MapMarker> clusterAt(double mx, double my) {
+        boolean dots = TileKey.blocksPerPixel(viewport.lod()) >= 64;
+        double hitRadius = dots ? 5 : 8;
+        for (MarkerClusterer.Cluster<MapMarker> cluster : visibleClusters) {
+            if (Math.abs(mx - cluster.x()) <= hitRadius && Math.abs(my - cluster.y()) <= hitRadius) return cluster;
+        }
+        return null;
+    }
+
+    private void renderMeasurement(GuiGraphicsExtractor context) {
+        if (!hasMeasurement) return;
+        double sx = viewport.worldToScreenX(measureStartX);
+        double sy = viewport.worldToScreenZ(measureStartZ);
+        double ex = viewport.worldToScreenX(measureEndX);
+        double ey = viewport.worldToScreenZ(measureEndZ);
+        double length = Math.hypot(ex - sx, ey - sy);
+        context.enableScissor(viewport.left, viewport.top, viewport.left + viewport.width, viewport.top + viewport.height);
+        var matrices = context.pose();
+        matrices.pushMatrix();
+        matrices.translate((float) sx, (float) sy);
+        matrices.rotate((float) Math.atan2(ey - sy, ex - sx));
+        context.fill(0, -1, (int) Math.round(length), 1, 0xFFFFD700);
+        matrices.popMatrix();
+        context.fill((int) sx - 2, (int) sy - 2, (int) sx + 2, (int) sy + 2, 0xFFFFD700);
+        context.fill((int) ex - 2, (int) ey - 2, (int) ex + 2, (int) ey + 2, 0xFFFFD700);
+        double dx = measureEndX - measureStartX;
+        double dz = measureEndZ - measureStartZ;
+        String label = Component.translatable("seedmap.screen.measure", Math.round(Math.hypot(dx, dz)),
+                Math.round(dx), Math.round(dz)).getString();
+        int w = font.width(label) + 6;
+        int lx = (int) ((sx + ex) / 2 - w / 2.0);
+        int ly = (int) ((sy + ey) / 2) - 14;
+        context.fill(lx, ly, lx + w, ly + 12, 0xE0101418);
+        context.text(font, label, lx + 3, ly + 2, 0xFFFFD700, false);
+        context.disableScissor();
+    }
+
+    private void renderStatus(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+        int px = panelX();
+        String line;
+        if (viewport.contains(mouseX, mouseY)) {
+            int bx = (int) Math.floor(viewport.screenToWorldX(mouseX));
+            int bz = (int) Math.floor(viewport.screenToWorldZ(mouseY));
+            line = Component.translatable("seedmap.screen.status", bx, bz, TileKey.blocksPerPixel(viewport.lod())).getString();
+        } else {
+            line = Component.translatable("seedmap.screen.status", (int) viewport.centerX, (int) viewport.centerZ,
+                    TileKey.blocksPerPixel(viewport.lod())).getString();
+        }
+        int pending = session == null ? 0 : session.tiles().pendingCount() + session.structures().pendingCount();
+        if (pending > 0) {
+            char spinner = "|/-\\".charAt((int) ((System.currentTimeMillis() / 120) % 4));
+            line = spinner + " " + Component.translatable("seedmap.screen.pending", pending).getString();
+        }
+        if (flash != null && System.currentTimeMillis() < flashUntil) {
+            line = flash;
+        }
+        context.text(font, line, px, statusY, MUTED, false);
+    }
+
+    private void renderMap(GuiGraphicsExtractor context) {
+        if (session == null) return;
+        int lod = viewport.lod();
+        List<TileKey> keys = TileKey.covering(lod, viewport.minBlockX(), viewport.minBlockZ(),
+                viewport.maxBlockX(), viewport.maxBlockZ());
+        session.tiles().request(keys, viewport.centerX, viewport.centerZ, session.biomeColors());
+
+        context.enableScissor(viewport.left, viewport.top, viewport.left + viewport.width, viewport.top + viewport.height);
+        int span = TileKey.tileSpanBlocks(lod);
+        for (TileKey key : keys) {
+            int sx = (int) Math.floor(viewport.worldToScreenX(key.originX()));
+            int sy = (int) Math.floor(viewport.worldToScreenZ(key.originZ()));
+            int ex = (int) Math.floor(viewport.worldToScreenX(key.originX() + span));
+            int ey = (int) Math.floor(viewport.worldToScreenZ(key.originZ() + span));
+            int w = Math.max(1, ex - sx);
+            int h = Math.max(1, ey - sy);
+            var texture = session.tiles().textureFor(key);
+            if (texture.isPresent()) {
+                context.blit(RenderPipelines.GUI_TEXTURED, texture.get(), sx, sy, 0, 0, w, h,
+                        TileKey.TILE_PIXELS, TileKey.TILE_PIXELS, TileKey.TILE_PIXELS, TileKey.TILE_PIXELS);
+            } else if (!drawCoarseFallback(context, key, sx, sy, w, h)) {
+                context.fill(sx, sy, sx + w, sy + h, session.tiles().isFailed(key) ? FAILED : PLACEHOLDER);
+            }
+        }
+        if (config.showSlimeChunks && session.dimension() == Dimension.OVERWORLD && viewport.scale <= 2.0) {
+            int minCx = viewport.minBlockX() >> 4;
+            int maxCx = viewport.maxBlockX() >> 4;
+            int minCz = viewport.minBlockZ() >> 4;
+            int maxCz = viewport.maxBlockZ() >> 4;
+            for (int cx = minCx; cx <= maxCx; cx++) {
+                for (int cz = minCz; cz <= maxCz; cz++) {
+                    if (!session.isSlimeChunk(cx, cz)) continue;
+                    int sx = (int) Math.floor(viewport.worldToScreenX(cx << 4));
+                    int sy = (int) Math.floor(viewport.worldToScreenZ(cz << 4));
+                    int ex = (int) Math.floor(viewport.worldToScreenX((cx << 4) + 16));
+                    int ey = (int) Math.floor(viewport.worldToScreenZ((cz << 4) + 16));
+                    context.fill(sx, sy, ex, ey, 0x3830FF30);
+                    context.fill(sx, sy, ex, sy + 1, 0xA030FF30);
+                    context.fill(sx, ey - 1, ex, ey, 0xA030FF30);
+                    context.fill(sx, sy, sx + 1, ey, 0xA030FF30);
+                    context.fill(ex - 1, sy, ex, ey, 0xA030FF30);
+                }
+            }
+        }
+        if (config.showGrid) {
+            renderGrid(context);
+        }
+        context.disableScissor();
+    }
+
+    private void renderGrid(GuiGraphicsExtractor context) {
+        int step;
+        int color;
+        if (viewport.scale <= 1.0) {
+            step = 16;
+            color = GRID_LINE;
+        } else if (viewport.scale <= 24.0) {
+            step = 512;
+            color = REGION_LINE;
+        } else {
+            return;
+        }
+        int minX = Math.floorDiv(viewport.minBlockX(), step) * step;
+        int maxX = viewport.maxBlockX();
+        int minZ = Math.floorDiv(viewport.minBlockZ(), step) * step;
+        int maxZ = viewport.maxBlockZ();
+        int bottom = viewport.top + viewport.height;
+        int right = viewport.left + viewport.width;
+        for (int x = minX; x <= maxX; x += step) {
+            int sx = (int) Math.floor(viewport.worldToScreenX(x));
+            boolean region = step == 16 && Math.floorMod(x, 512) == 0;
+            context.fill(sx, viewport.top, sx + 1, bottom, region ? REGION_LINE : color);
+        }
+        for (int z = minZ; z <= maxZ; z += step) {
+            int sy = (int) Math.floor(viewport.worldToScreenZ(z));
+            boolean region = step == 16 && Math.floorMod(z, 512) == 0;
+            context.fill(viewport.left, sy, right, sy + 1, region ? REGION_LINE : color);
+        }
+    }
+
+    private boolean drawCoarseFallback(GuiGraphicsExtractor context, TileKey key, int sx, int sy, int w, int h) {
+        for (int lod = key.lod() + 1; lod < TileKey.LOD_COUNT; lod++) {
+            TileKey coarse = TileKey.coarserCovering(key, lod);
+            var texture = session.tiles().textureFor(coarse);
+            if (texture.isEmpty()) continue;
+            int ratio = TileKey.tileSpanBlocks(lod) / TileKey.tileSpanBlocks(key.lod());
+            float region = (float) TileKey.TILE_PIXELS / ratio;
+            float u = (float) (key.originX() - coarse.originX()) / TileKey.tileSpanBlocks(lod) * TileKey.TILE_PIXELS;
+            float v = (float) (key.originZ() - coarse.originZ()) / TileKey.tileSpanBlocks(lod) * TileKey.TILE_PIXELS;
+            context.blit(RenderPipelines.GUI_TEXTURED, texture.get(), sx, sy, u, v, w, h,
+                    Math.max(1, Math.round(region)), Math.max(1, Math.round(region)), TileKey.TILE_PIXELS, TileKey.TILE_PIXELS);
+            return true;
+        }
+        return false;
+    }
+
+    private void renderStructureIcons(GuiGraphicsExtractor context) {
+        if (session == null) return;
+        List<RegionHit> hits = session.structures().query(
+                viewport.minBlockX(), viewport.minBlockZ(), viewport.maxBlockX(), viewport.maxBlockZ(),
+                session.enabledStructures());
+        List<MapMarker> markers = new ArrayList<>(hits.size());
+        for (RegionHit hit : hits) markers.add(MapMarker.of(hit));
+        if (viewport.scale <= FEATURE_MAX_SCALE) {
+            Set<Identifier> features = session.enabledFeatures();
+            if (!features.isEmpty()) {
+                for (var hit : session.features().query(viewport.minBlockX(), viewport.minBlockZ(),
+                        viewport.maxBlockX(), viewport.maxBlockZ(), features)) {
+                    markers.add(MapMarker.of(hit));
+                }
+            }
+        }
+        context.enableScissor(viewport.left, viewport.top, viewport.left + viewport.width, viewport.top + viewport.height);
+        boolean dots = TileKey.blocksPerPixel(viewport.lod()) >= 64;
+        visibleClusters = MarkerClusterer.cluster(markers,
+                m -> viewport.worldToScreenX(m.blockX()),
+                m -> viewport.worldToScreenZ(m.blockZ()),
+                dots ? DOT_CLUSTER_RADIUS : ICON_CLUSTER_RADIUS);
+        for (MarkerClusterer.Cluster<MapMarker> cluster : visibleClusters) {
+            int sx = (int) Math.round(cluster.x());
+            int sy = (int) Math.round(cluster.y());
+            Identifier id = dominant(cluster).id();
+            if (dots) {
+                int r = cluster.size() > 1 ? 3 : 2;
+                context.fill(sx - r, sy - r, sx + r, sy + r, StructureIcons.colorFor(id));
+            } else {
+                StructureIcons.drawIcon(context, id, sx - 8, sy - 8);
+            }
+            if (cluster.size() > 1) {
+                drawCountBadge(context, sx + (dots ? 3 : 6), sy - (dots ? 9 : 10), cluster.size());
+            }
+        }
+        for (SearchResult hit : lastResults) {
+            int sx = (int) Math.round(viewport.worldToScreenX(hit.x()));
+            int sy = (int) Math.round(viewport.worldToScreenZ(hit.z()));
+            int r = 11;
+            context.fill(sx - r, sy - r, sx + r, sy - r + 2, 0xFFFFD700);
+            context.fill(sx - r, sy + r - 2, sx + r, sy + r, 0xFFFFD700);
+            context.fill(sx - r, sy - r, sx - r + 2, sy + r, 0xFFFFD700);
+            context.fill(sx + r - 2, sy - r, sx + r, sy + r, 0xFFFFD700);
+            if (TileKey.blocksPerPixel(viewport.lod()) >= 64 || hit.structureId() == null) {
+                context.fill(sx - 3, sy - 3, sx + 3, sy + 3, hit.color());
+            } else {
+                StructureIcons.drawIcon(context, hit.structureId(), sx - 8, sy - 8);
+            }
+        }
+        if (minecraft.level != null) {
+            var respawn = minecraft.level.getRespawnData();
+            if (respawn.dimension().identifier().equals(session.dimension().levelId())) {
+                int sx = (int) Math.round(viewport.worldToScreenX(respawn.pos().getX()));
+                int sy = (int) Math.round(viewport.worldToScreenZ(respawn.pos().getZ()));
+                StructureIcons.drawMapSprite(context, "target_point", sx - 8, sy - 8);
+            }
+        }
+        WaypointState.get().ifPresent(wp -> {
+            if (!wp.dimension().equals(session.dimension().levelId())) return;
+            int sx = (int) Math.round(viewport.worldToScreenX(wp.x()));
+            int sy = (int) Math.round(viewport.worldToScreenZ(wp.z()));
+            context.fill(sx - 1, sy - 10, sx + 1, sy + 10, 0xFFFF4040);
+            context.fill(sx - 10, sy - 1, sx + 10, sy + 1, 0xFFFF4040);
+        });
+        if (minecraft.player != null && Dimension.fromLevel(minecraft.player.level().dimension()) == session.dimension()) {
+            int sx = (int) Math.round(viewport.worldToScreenX(minecraft.player.getX()));
+            int sy = (int) Math.round(viewport.worldToScreenZ(minecraft.player.getZ()));
+            var matrices = context.pose();
+            if (config.showFacing) {
+                float heading = (float) Math.toRadians(minecraft.player.getYRot() + 90f);
+                int length = Math.max(24, Math.min(viewport.width, viewport.height) / 6);
+                for (float spread : new float[]{-0.26f, 0f, 0.26f}) {
+                    matrices.pushMatrix();
+                    matrices.translate(sx, sy);
+                    matrices.rotate(heading + spread);
+                    int from = spread == 0f ? 10 : 6;
+                    int to = spread == 0f ? length : length * 3 / 4;
+                    context.fill(from, 0, to, 1, FACING_LINE);
+                    matrices.popMatrix();
+                }
+            }
+            matrices.pushMatrix();
+            matrices.translate(sx, sy);
+            matrices.rotate((float) Math.toRadians(minecraft.player.getYRot() + 180f));
+            context.blit(RenderPipelines.GUI_TEXTURED, StructureIcons.ARROW, -8, -8, 0, 0, 16, 16, 16, 16);
+            matrices.popMatrix();
+        }
+        context.disableScissor();
+    }
+
+    private static MapMarker dominant(MarkerClusterer.Cluster<MapMarker> cluster) {
+        if (cluster.size() == 1) return cluster.members().get(0);
+        java.util.Map<Identifier, Integer> counts = new java.util.HashMap<>();
+        MapMarker best = cluster.members().get(0);
+        int bestCount = 0;
+        for (MapMarker marker : cluster.members()) {
+            int n = counts.merge(marker.id(), 1, Integer::sum);
+            if (n > bestCount) {
+                bestCount = n;
+                best = marker;
+            }
+        }
+        return best;
+    }
+
+    private void drawCountBadge(GuiGraphicsExtractor context, int x, int y, int count) {
+        String text = count > 99 ? "99+" : Integer.toString(count);
+        int w = font.width(text) + 3;
+        context.fill(x, y, x + w, y + 9, 0xE0202830);
+        context.fill(x, y, x + w, y + 1, 0xFFFFD700);
+        context.text(font, text, x + 2, y + 1, 0xFFFFFFFF, false);
+    }
+
+    private void renderMapOverlays(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+        int mapCenterX = viewport.left + viewport.width / 2;
+        int mapCenterY = viewport.top + viewport.height / 2;
+        if (sessionError != null) {
+            context.centeredText(font, sessionError, mapCenterX, mapCenterY, TEXT);
+        } else if (session == null && !sessionLoading) {
+            context.centeredText(font, Component.translatable("seedmap.screen.no_seed"), mapCenterX, mapCenterY, TEXT);
+        } else if (sessionLoading) {
+            context.centeredText(font, Component.translatable("seedmap.screen.loading"), mapCenterX, mapCenterY, TEXT);
+        }
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+        if (menu != null) {
+            ContextMenu open = menu;
+            boolean inside = open.contains(click.x(), click.y());
+            if (inside) open.mouseClicked(click.x(), click.y(), click.button());
+            if (menu == open) menu = null;
+            return true;
+        }
+        if (picker != null && !pickerContains(click.x(), click.y())) {
+            closePicker();
+            return true;
+        }
+        for (SegmentedControl control : controls) {
+            if (control.mouseClicked(click.x(), click.y(), click.button())) return true;
+        }
+        if (grid != null && grid.mouseClicked(click.x(), click.y(), click.button())) return true;
+        if (super.mouseClicked(click, doubled)) return true;
+        if (!viewport.contains(click.x(), click.y()) || session == null) {
+            return false;
+        }
+        if (click.button() == 1 && click.hasShiftDown()) {
+            measuring = true;
+            hasMeasurement = true;
+            measureStartX = viewport.screenToWorldX(click.x());
+            measureStartZ = viewport.screenToWorldZ(click.y());
+            measureEndX = measureStartX;
+            measureEndZ = measureStartZ;
+            return true;
+        }
+        if (click.button() == 1) {
+            hasMeasurement = false;
+            boolean dots = TileKey.blocksPerPixel(viewport.lod()) >= 64;
+            MarkerClusterer.Cluster<MapMarker> cluster = clusterAt(click.x(), click.y());
+            if (cluster != null) {
+                if (cluster.size() > 1 || dots) {
+                    viewport.zoomAt(cluster.x(), cluster.y(), cluster.size() > 1 ? 0.35 : 0.5);
+                    return true;
+                }
+                MapMarker marker = cluster.members().get(0);
+                WaypointState.set(new Waypoint(StructureIcons.displayName(marker.id()), marker.blockX(), marker.blockZ(),
+                        marker.id(), session.dimension().levelId()));
+                onClose();
+                return true;
+            }
+        }
+        if (click.button() == 3) {
+            MarkerClusterer.Cluster<MapMarker> cluster = clusterAt(click.x(), click.y());
+            if (cluster != null && cluster.size() == 1) {
+                MapMarker marker = cluster.members().get(0);
+                openPointMenu((int) click.x(), (int) click.y(), marker.blockX(), marker.blockZ(),
+                        StructureIcons.displayName(marker.id()), marker.id());
+                return true;
+            }
+            int bx = (int) Math.floor(viewport.screenToWorldX(click.x()));
+            int bz = (int) Math.floor(viewport.screenToWorldZ(click.y()));
+            openPointMenu((int) click.x(), (int) click.y(), bx, bz);
+            return true;
+        }
+        if (click.button() == 1) {
+            dragging = true;
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent click) {
+        dragging = false;
+        measuring = false;
+        return super.mouseReleased(click);
+    }
+
+    @Override
+    public boolean mouseDragged(MouseButtonEvent click, double offsetX, double offsetY) {
+        if (measuring && click.button() == 1) {
+            measureEndX = viewport.screenToWorldX(click.x());
+            measureEndZ = viewport.screenToWorldZ(click.y());
+            return true;
+        }
+        if (dragging && click.button() == 1) {
+            viewport.pan(offsetX, offsetY);
+            return true;
+        }
+        return super.mouseDragged(click, offsetX, offsetY);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        if (menu != null) return true;
+        if (picker != null && pickerContains(mouseX, mouseY)) {
+            return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+        }
+        if (viewport.contains(mouseX, mouseY) && verticalAmount != 0) {
+            viewport.zoomAt(mouseX, mouseY, verticalAmount > 0 ? 0.8 : 1.25);
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent input) {
+        if (menu != null && input.isEscape()) {
+            menu = null;
+            return true;
+        }
+        if (hasMeasurement && input.isEscape()) {
+            hasMeasurement = false;
+            return true;
+        }
+        if (picker != null && input.isEscape()) {
+            closePicker();
+            return true;
+        }
+        if (goField != null && goField.isFocused() && (input.key() == SDLScancode.SDL_SCANCODE_RETURN || input.key() == SDLScancode.SDL_SCANCODE_KP_ENTER)) {
+            goToTyped();
+            return true;
+        }
+        boolean typing = (seedField != null && seedField.isFocused()) || (pickerFilter != null && pickerFilter.isFocused())
+                || (goField != null && goField.isFocused());
+        if (!typing && SeedMapClient.OPEN_MAP.matches(input)) {
+            onClose();
+            return true;
+        }
+        return super.keyPressed(input);
+    }
+}
