@@ -8,6 +8,8 @@ Press **M** to open the map. It predicts biomes and structure locations from the
 
 - Overworld, Nether and End maps with pan and zoom.
 - Structure icons, toggleable types, biome and structure search.
+- Default-on clutter hiding without marker clustering: crowded icons are hidden at real positions instead of replaced with cluster counts.
+- Optional legacy clustering and an experimental faint white icon outline (off by default).
 - Find amethyst geodes, show slime chunks and explore biome Y layers.
 - Search within configurable radii and place waypoints from the results.
 - HUD direction arrow and in-world waypoint beam.
