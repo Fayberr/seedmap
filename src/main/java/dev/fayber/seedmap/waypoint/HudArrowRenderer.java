@@ -1,12 +1,11 @@
 package dev.fayber.seedmap.waypoint;
 
-import dev.fayber.seedmap.gui.StructureIcons;
+import dev.fayber.seedmap.gui.NavigationPointer;
 import dev.fayber.seedmap.worldgen.Dimension;
 import net.minecraft.network.chat.Component;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.renderer.RenderPipelines;
 
 public final class HudArrowRenderer {
     private HudArrowRenderer() {}
@@ -31,12 +30,8 @@ public final class HudArrowRenderer {
 
         int centerX = context.guiWidth() / 2;
         int arrowY = 18;
-        var matrices = context.pose();
-        matrices.pushMatrix();
-        matrices.translate(centerX, arrowY);
-        matrices.rotate((float) Math.toRadians(relative));
-        context.blit(RenderPipelines.GUI_TEXTURED, StructureIcons.ARROW, -8, -8, 0, 0, 16, 16, 16, 16);
-        matrices.popMatrix();
+        context.fill(centerX - 14, arrowY - 14, centerX + 14, arrowY + 14, 0xB0121212);
+        NavigationPointer.draw(context, centerX, arrowY, (float) Math.toRadians(relative), 0xFFFFFFFF);
 
         String label = waypoint.name() + "  " + distance + " m";
         context.centeredText(client.font, label, centerX, arrowY + 12, 0xFFFFFFFF);

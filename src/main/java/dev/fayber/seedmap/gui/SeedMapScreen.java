@@ -1097,13 +1097,8 @@ public class SeedMapScreen extends Screen {
             FreecamCamera.locate(minecraft).ifPresent(camera -> {
                 int x = (int) Math.round(viewport.worldToScreenX(camera.x()));
                 int z = (int) Math.round(viewport.worldToScreenZ(camera.z()));
-                var matrices = context.pose();
-                matrices.pushMatrix();
-                matrices.translate(x, z);
-                matrices.rotate((float) Math.toRadians(camera.yaw() + 180f));
-                context.blit(RenderPipelines.GUI_TEXTURED, StructureIcons.ARROW,
-                        -8, -8, 0, 0, 16, 16, 16, 16, 0xA6FFFFFF);
-                matrices.popMatrix();
+                NavigationPointer.draw(context, x, z,
+                        (float) Math.toRadians(camera.yaw() + 180f), 0xA6FFFFFF);
             });
         }
         if (minecraft.player != null && Dimension.fromLevel(minecraft.player.level().dimension()) == session.dimension()) {
@@ -1123,11 +1118,8 @@ public class SeedMapScreen extends Screen {
                     matrices.popMatrix();
                 }
             }
-            matrices.pushMatrix();
-            matrices.translate(sx, sy);
-            matrices.rotate((float) Math.toRadians(minecraft.player.getYRot() + 180f));
-            context.blit(RenderPipelines.GUI_TEXTURED, StructureIcons.ARROW, -8, -8, 0, 0, 16, 16, 16, 16);
-            matrices.popMatrix();
+            NavigationPointer.draw(context, sx, sy,
+                    (float) Math.toRadians(minecraft.player.getYRot() + 180f), 0xFFFFFFFF);
         }
         context.disableScissor();
     }
