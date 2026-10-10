@@ -1,0 +1,41 @@
+name: Temporary SeedMap log reader
+
+on:
+  push:
+    branches:
+      - ui/seedmap-overhaul
+    paths:
+      - .github/workflows/seedmap-log-read.yml
+
+permissions:
+  contents: read
+
+jobs:
+  read-log:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Fetch and filter public SeedMap log
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --location --max-time 35 \
+            'https://api.mclo.gs/1/raw/41r1rRx' -o /tmp/seedmap-public-log.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          lines = Path('/tmp/seedmap-public-log.txt').read_text(errors='replace').splitlines()
+          print('TOTAL LINES:',len(lines))
+          for i,line in enumerate(lines):
+              lower=line.lower()
+              if ('seedmap outline' in lower or 'item silhouette capture' in lower
+                  or 'seedmap loaded' in lower
+                  or 'texture needs usage_copy_src' in lower
+                  or 'failed to apply mixin' in lower
+                  or 'invalidinjectionexception' in lower
+                  or 'seedmap.mixin' in lower
+                  or 'could not copy rendered model' in lower):
+                  print(f'{i+1}: {line[:450]}')
+                  if ('/warn' in lower or '/error' in lower or 'exception' in lower or 'failed' in lower):
+                      for j in range(i+1,min(i+9,len(lines))):
+                          if lines[j].lstrip().startswith(('at ', 'Caused by:', 'java.', 'org.', 'com.', '\tat')):
+                              print(f'{j+1}: {lines[j][:450]}')
+          PY
