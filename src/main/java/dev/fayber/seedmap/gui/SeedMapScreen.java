@@ -9,6 +9,7 @@ import dev.fayber.seedmap.map.MapMarker;
 import dev.fayber.seedmap.map.MapViewport;
 import dev.fayber.seedmap.map.MapWorker;
 import dev.fayber.seedmap.map.MarkerClusterer;
+import dev.fayber.seedmap.map.MarkerVisibility;
 import dev.fayber.seedmap.map.TileKey;
 import dev.fayber.seedmap.waypoint.ShareHandler;
 import java.io.IOException;
@@ -48,7 +49,7 @@ public class SeedMapScreen extends Screen {
     protected static final int MUTED = 0xFFA3A3A3;
     protected static final int PLACEHOLDER = 0xFF2A2A2A;
     protected static final int FAILED = 0xFF5A1E1E;
-    protected static final int PANEL_WIDTH = 218;
+    protected static final int HEADER_HEIGHT = 31;
     private static final int PAD = 6;
     private static final int SEG_H = 14;
     private static final int BTN_H = 16;
@@ -57,6 +58,7 @@ public class SeedMapScreen extends Screen {
     private static final List<Integer> BIOME_LAYERS = List.of(64, 32, 0, -40, -60);
     private static final double ICON_CLUSTER_RADIUS = 12.0;
     private static final double DOT_CLUSTER_RADIUS = 5.0;
+    private boolean filtersExpanded;
     private static final int GRID_LINE = 0x38FFFFFF;
     private static final int REGION_LINE = 0x70FFFFFF;
     private static final int FACING_LINE = 0x90FFFFFF;
@@ -119,19 +121,24 @@ public class SeedMapScreen extends Screen {
         }
     }
 
+    private int panelWidth() {
+        return Math.min(260, Math.max(176, width / 3));
+    }
+
     private int panelX() {
-        return width - PANEL_WIDTH + PAD;
+        return width - panelWidth() + PAD;
     }
 
     private int panelW() {
-        return PANEL_WIDTH - 2 * PAD;
+        return panelWidth() - 2 * PAD;
     }
 
     @Override
     protected void init() {
         viewport.left = 0;
-        viewport.top = 0;
-        viewport.width = width - PANEL_WIDTH;
+        viewport.top = HEADER_HEIGHT;
+        viewport.width = width - panelWidth();
+        viewport.height = height - HEADER_HEIGHT;
         viewport.height = height;
         if (!viewportInitialized) {
             centerOnPlayer();
@@ -151,7 +158,7 @@ public class SeedMapScreen extends Screen {
     void buildPanel() {
         int px = panelX();
         int pw = panelW();
-        int y = PAD;
+        int y = HEADER_HEIGHT + PAD;
         closePicker();
         for (AbstractWidget w : new AbstractWidget[]{seedField, applyButton, goField, goButton, targetButton, searchButton, resultsList}) {
             if (w != null) removeWidget(w);
@@ -184,13 +191,25 @@ public class SeedMapScreen extends Screen {
         addRenderableWidget(goButton);
         y += BTN_H + GAP + 1;
 
-        List<SegmentedControl.Segment> dims = new ArrayList<>();
-        for (Dimension d : Dimension.values()) {
-            dims.add(SegmentedControl.Segment.of(d.displayName(), () -> currentDimension == d, () -> switchDimension(d)));
+        // The top toolbar stays outside the scrollable map and right sidebar.
+        List<SegmentedControl.Segment> dimensions = new ArrayList<>();
+        for (Dimension dimension : Dimension.values()) {
+            dimensions.add(SegmentedControl.Segment.of(dimension.displayName(),
+                    () -> currentDimension == dimension, () -> switchDimension(dimension)));
         }
-        controls.add(new SegmentedControl(px, y, pw, SEG_H, dims));
-        y += SEG_H + GAP;
-
+        int dimWidth = Math.max(80, Math.min(158, width - 258));
+        controls.add(new SegmentedControl(84, 8, dimWidth, 16, dimensions));
+        controls.add(new SegmentedControl(width - 166, 8, 160, 16, List.of(
+                SegmentedControl.Segment.of(Component.literal("Me"), () -> false, this::centerOnPlayer),
+                SegmentedControl.Segment.of(Component.literal("-"), () -> false,
+                        () -> viewport.zoomAt(viewport.left + viewport.width / 2.0,
+                                viewport.top + viewport.height / 2.0, 2.0)),
+                SegmentedControl.Segment.of(Component.literal("+"), () -> false,
+                        () -> viewport.zoomAt(viewport.left + viewport.width / 2.0,
+                                viewport.top + viewport.height / 2.0, 0.5)),
+                SegmentedControl.Segment.of(Component.literal("Settings"), () -> false,
+                        () -> minecraft.setScreenAndShow(SeedMapSettings.create(this))))));
+        // Biome height and search options remain in the context sidebar.
         if (currentDimension == Dimension.OVERWORLD) {
             int labelW = font.width(Component.translatable("seedmap.screen.biome_y")) + 4;
             layerLabelY = y + (SEG_H - 8) / 2;
@@ -220,23 +239,31 @@ public class SeedMapScreen extends Screen {
                 .map(SeedWorld::idOf).toList();
         if (!biomeIds.contains(lastBiome)) lastBiome = biomeIds.get(0);
 
+        controls.add(new SegmentedControl(px, y, pw, SEG_H, List.of(
+                SegmentedControl.Segment.of(Component.literal("Features  " +
+                                (filtersExpanded ? "Hide filters" : "Show filters")),
+                        () -> filtersExpanded,
+                        () -> { filtersExpanded = !filtersExpanded; buildPanel(); }))));
+        y += SEG_H + GAP;
         gridTop = y + 10;
-        if (session != null) {
-            grid = new StructureGrid(px, gridTop, pw / StructureGrid.CELL, structureIds, session.enabledStructures(),
-                    this::saveToggles, id -> {
+        if (session != null && filtersExpanded) {
+            grid = new StructureGrid(px, gridTop, pw / StructureGrid.CELL, structureIds,
+                    session.enabledStructures(), this::saveToggles, id -> {
                         setBiomeMode(false);
                         selectTarget(id);
                     }, () -> biomeMode ? null : lastStructure);
             controls.add(new SegmentedControl(px + pw - 60, y - 1, 60, 10, List.of(
-                    SegmentedControl.Segment.of(Component.translatable("seedmap.screen.all"), () -> false, () -> grid.setAll(true)),
-                    SegmentedControl.Segment.of(Component.translatable("seedmap.screen.none"), () -> false, () -> grid.setAll(false)))));
+                    SegmentedControl.Segment.of(Component.translatable("seedmap.screen.all"),
+                            () -> false, () -> grid.setAll(true)),
+                    SegmentedControl.Segment.of(Component.translatable("seedmap.screen.none"),
+                            () -> false, () -> grid.setAll(false)))));
             y = gridTop + grid.height() + 2;
             hintY = y;
             y += 10;
         } else {
             grid = null;
             hintY = -1;
-            y = gridTop;
+            y += 4;
         }
         y += 4;
 
@@ -452,7 +479,7 @@ public class SeedMapScreen extends Screen {
             return;
         }
         int w = 200;
-        int x = width - PANEL_WIDTH - w - 8;
+        int x = width - panelWidth() - w - 8;
         int y = PAD;
         int h = Math.min(300, height - y - 10);
         pickerFilter = new EditBox(font, x, y, w, BTN_H, Component.translatable("seedmap.screen.filter"));
@@ -698,13 +725,12 @@ public class SeedMapScreen extends Screen {
         renderMapOverlays(context, mouseX, mouseY);
         int px = panelX();
         int pw = panelW();
-        context.fill(width - PANEL_WIDTH, 0, width, height, PANEL);
-        context.fill(width - PANEL_WIDTH, 0, width - PANEL_WIDTH + 1, height, PANEL_EDGE);
-        context.text(font, title, px, PAD + 1, TEXT, false);
-        if (session != null && !session.world().isVanilla()) {
-            String tag = Component.translatable("seedmap.screen.modded").getString();
-            context.text(font, tag, px + pw - font.width(tag), PAD + 1, MUTED, false);
-        }
+        SeedMapUi.panel(context, width - panelWidth(), HEADER_HEIGHT, panelWidth(), height - HEADER_HEIGHT,
+                0, PANEL);
+        context.fill(width - panelWidth(), HEADER_HEIGHT, width - panelWidth() + 1, height, PANEL_EDGE);
+        SeedMapUi.panel(context, 0, 0, width, HEADER_HEIGHT, 0, PANEL);
+        context.fill(0, HEADER_HEIGHT - 1, width, HEADER_HEIGHT, SEPARATOR);
+        context.text(font, SeedMapUi.text("SEEDMAP"), 10, 11, TEXT, false);
         if (grid != null) {
             context.text(font, Component.translatable("seedmap.screen.structures"), px, gridTop - 10, MUTED, false);
             grid.render(context, font, mouseX, mouseY);
@@ -936,9 +962,10 @@ public class SeedMapScreen extends Screen {
 
     private void renderStructureIcons(GuiGraphicsExtractor context) {
         if (session == null) return;
+        Set<Identifier> enabled = MarkerVisibility.enabledAtScale(
+                session.enabledStructures(), viewport.scale, config.markerDensity);
         List<RegionHit> hits = session.structures().query(
-                viewport.minBlockX(), viewport.minBlockZ(), viewport.maxBlockX(), viewport.maxBlockZ(),
-                session.enabledStructures());
+                viewport.minBlockX(), viewport.minBlockZ(), viewport.maxBlockX(), viewport.maxBlockZ(), enabled);
         List<MapMarker> markers = new ArrayList<>(hits.size());
         for (RegionHit hit : hits) markers.add(MapMarker.of(hit));
         if (viewport.scale <= FEATURE_MAX_SCALE) {
@@ -951,11 +978,11 @@ public class SeedMapScreen extends Screen {
             }
         }
         context.enableScissor(viewport.left, viewport.top, viewport.left + viewport.width, viewport.top + viewport.height);
-        boolean dots = TileKey.blocksPerPixel(viewport.lod()) >= 64;
+        boolean dots = !MarkerVisibility.iconAt(viewport.scale, config.markerDensity);
         visibleClusters = MarkerClusterer.cluster(markers,
                 m -> viewport.worldToScreenX(m.blockX()),
                 m -> viewport.worldToScreenZ(m.blockZ()),
-                dots ? DOT_CLUSTER_RADIUS : ICON_CLUSTER_RADIUS);
+                MarkerVisibility.clusterRadius(viewport.scale));
         for (MarkerClusterer.Cluster<MapMarker> cluster : visibleClusters) {
             int sx = (int) Math.round(cluster.x());
             int sy = (int) Math.round(cluster.y());
@@ -978,13 +1005,13 @@ public class SeedMapScreen extends Screen {
             context.fill(sx - r, sy + r - 2, sx + r, sy + r, 0xFF7AA2F7);
             context.fill(sx - r, sy - r, sx - r + 2, sy + r, 0xFF7AA2F7);
             context.fill(sx + r - 2, sy - r, sx + r, sy + r, 0xFF7AA2F7);
-            if (TileKey.blocksPerPixel(viewport.lod()) >= 64 || hit.structureId() == null) {
+            if (!MarkerVisibility.iconAt(viewport.scale, config.markerDensity) || hit.structureId() == null) {
                 context.fill(sx - 3, sy - 3, sx + 3, sy + 3, hit.color());
             } else {
                 StructureIcons.drawIcon(context, hit.structureId(), sx - 8, sy - 8);
             }
         }
-        if (minecraft.level != null) {
+        if (config.showSpawnMarker && minecraft.level != null) {
             var respawn = minecraft.level.getRespawnData();
             if (respawn.dimension().identifier().equals(session.dimension().levelId())) {
                 int sx = (int) Math.round(viewport.worldToScreenX(respawn.pos().getX()));
@@ -992,7 +1019,7 @@ public class SeedMapScreen extends Screen {
                 StructureIcons.drawMapSprite(context, "target_point", sx - 8, sy - 8);
             }
         }
-        WaypointState.get().ifPresent(wp -> {
+        if (config.showWaypointMarker) WaypointState.get().ifPresent(wp -> {
             if (!wp.dimension().equals(session.dimension().levelId())) return;
             int sx = (int) Math.round(viewport.worldToScreenX(wp.x()));
             int sy = (int) Math.round(viewport.worldToScreenZ(wp.z()));
@@ -1092,7 +1119,7 @@ public class SeedMapScreen extends Screen {
         }
         if (click.button() == 1) {
             hasMeasurement = false;
-            boolean dots = TileKey.blocksPerPixel(viewport.lod()) >= 64;
+            boolean dots = !MarkerVisibility.iconAt(viewport.scale, config.markerDensity);
             MarkerClusterer.Cluster<MapMarker> cluster = clusterAt(click.x(), click.y());
             if (cluster != null) {
                 if (cluster.size() > 1 || dots) {
