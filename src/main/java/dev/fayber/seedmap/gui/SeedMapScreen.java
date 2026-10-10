@@ -312,7 +312,7 @@ public class SeedMapScreen extends Screen {
             }
         }
         for (SearchResult r : lastResults) {
-            dots.add(new MapExporter.Dot(r.x(), r.z(), 0xFFFFD700, 3));
+            dots.add(new MapExporter.Dot(r.x(), r.z(), 0xFF7AA2F7, 3));
         }
         WaypointState.get().filter(wp -> wp.dimension().equals(session.dimension().levelId()))
                 .ifPresent(wp -> dots.add(new MapExporter.Dot(wp.x(), wp.z(), 0xFFFF4040, 3)));
@@ -773,7 +773,7 @@ public class SeedMapScreen extends Screen {
         if (x + w > viewport.left + viewport.width) x = mouseX - w - 4;
         if (y + h > viewport.top + viewport.height) y = mouseY - h - 4;
         context.fill(x - 1, y - 1, x + w + 1, y + h + 1, PANEL_EDGE);
-        context.fill(x, y, x + w, y + h, 0xF01E242B);
+        context.fill(x, y, x + w, y + h, 0xF01A1A1A);
         for (int i = 0; i < lines.size(); i++) {
             context.text(font, lines.get(i), x + 3, y + 3 + i * 10, i == 0 ? TEXT : MUTED, false);
         }
@@ -800,10 +800,10 @@ public class SeedMapScreen extends Screen {
         matrices.pushMatrix();
         matrices.translate((float) sx, (float) sy);
         matrices.rotate((float) Math.atan2(ey - sy, ex - sx));
-        context.fill(0, -1, (int) Math.round(length), 1, 0xFFFFD700);
+        context.fill(0, -1, (int) Math.round(length), 1, 0xFF7AA2F7);
         matrices.popMatrix();
-        context.fill((int) sx - 2, (int) sy - 2, (int) sx + 2, (int) sy + 2, 0xFFFFD700);
-        context.fill((int) ex - 2, (int) ey - 2, (int) ex + 2, (int) ey + 2, 0xFFFFD700);
+        context.fill((int) sx - 2, (int) sy - 2, (int) sx + 2, (int) sy + 2, 0xFF7AA2F7);
+        context.fill((int) ex - 2, (int) ey - 2, (int) ex + 2, (int) ey + 2, 0xFF7AA2F7);
         double dx = measureEndX - measureStartX;
         double dz = measureEndZ - measureStartZ;
         String label = Component.translatable("seedmap.screen.measure", Math.round(Math.hypot(dx, dz)),
@@ -811,8 +811,8 @@ public class SeedMapScreen extends Screen {
         int w = font.width(label) + 6;
         int lx = (int) ((sx + ex) / 2 - w / 2.0);
         int ly = (int) ((sy + ey) / 2) - 14;
-        context.fill(lx, ly, lx + w, ly + 12, 0xE0101418);
-        context.text(font, label, lx + 3, ly + 2, 0xFFFFD700, false);
+        context.fill(lx, ly, lx + w, ly + 12, 0xE0121212);
+        context.text(font, label, lx + 3, ly + 2, 0xFF7AA2F7, false);
         context.disableScissor();
     }
 
@@ -974,10 +974,10 @@ public class SeedMapScreen extends Screen {
             int sx = (int) Math.round(viewport.worldToScreenX(hit.x()));
             int sy = (int) Math.round(viewport.worldToScreenZ(hit.z()));
             int r = 11;
-            context.fill(sx - r, sy - r, sx + r, sy - r + 2, 0xFFFFD700);
-            context.fill(sx - r, sy + r - 2, sx + r, sy + r, 0xFFFFD700);
-            context.fill(sx - r, sy - r, sx - r + 2, sy + r, 0xFFFFD700);
-            context.fill(sx + r - 2, sy - r, sx + r, sy + r, 0xFFFFD700);
+            context.fill(sx - r, sy - r, sx + r, sy - r + 2, 0xFF7AA2F7);
+            context.fill(sx - r, sy + r - 2, sx + r, sy + r, 0xFF7AA2F7);
+            context.fill(sx - r, sy - r, sx - r + 2, sy + r, 0xFF7AA2F7);
+            context.fill(sx + r - 2, sy - r, sx + r, sy + r, 0xFF7AA2F7);
             if (TileKey.blocksPerPixel(viewport.lod()) >= 64 || hit.structureId() == null) {
                 context.fill(sx - 3, sy - 3, sx + 3, sy + 3, hit.color());
             } else {
@@ -1043,8 +1043,8 @@ public class SeedMapScreen extends Screen {
     private void drawCountBadge(GuiGraphicsExtractor context, int x, int y, int count) {
         String text = count > 99 ? "99+" : Integer.toString(count);
         int w = font.width(text) + 3;
-        context.fill(x, y, x + w, y + 9, 0xE0202830);
-        context.fill(x, y, x + w, y + 1, 0xFFFFD700);
+        context.fill(x, y, x + w, y + 9, 0xE01A1A1A);
+        context.fill(x, y, x + w, y + 1, 0xFF7AA2F7);
         context.text(font, text, x + 2, y + 1, 0xFFFFFFFF, false);
     }
 

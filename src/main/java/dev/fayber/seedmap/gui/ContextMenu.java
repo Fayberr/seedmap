@@ -12,7 +12,7 @@ public final class ContextMenu {
     private static final int PAD = 4;
     private static final int BORDER = 0xFF262626;
     private static final int BACKGROUND = 0xFF1A1A1A;
-    private static final int HOVER = 0xFF3A7BD5;
+    private static final int HOVER = 0xFF7AA2F7;
     private static final int TEXT = 0xFFF0F0F0;
     private static final int TITLE = 0xFFA3A3A3;
 
