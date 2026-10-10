@@ -251,7 +251,8 @@ public class SeedMapScreen extends Screen {
                     session.enabledStructures(), this::saveToggles, id -> {
                         setBiomeMode(false);
                         selectTarget(id);
-                    }, () -> biomeMode ? null : lastStructure);
+                    }, () -> biomeMode ? null : lastStructure,
+                    Math.max(2, Math.min(5, (height - gridTop - 118) / StructureGrid.CELL)));
             controls.add(new SegmentedControl(px + pw - 60, y - 1, 60, 10, List.of(
                     SegmentedControl.Segment.of(Component.translatable("seedmap.screen.all"),
                             () -> false, () -> grid.setAll(true)),
@@ -1179,6 +1180,10 @@ public class SeedMapScreen extends Screen {
         if (menu != null) return true;
         if (picker != null && pickerContains(mouseX, mouseY)) {
             return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+        }
+        if (grid != null && grid.contains(mouseX, mouseY) && verticalAmount != 0) {
+            grid.scroll(verticalAmount);
+            return true;
         }
         if (viewport.contains(mouseX, mouseY) && verticalAmount != 0) {
             viewport.zoomAt(mouseX, mouseY, verticalAmount > 0 ? 0.8 : 1.25);
