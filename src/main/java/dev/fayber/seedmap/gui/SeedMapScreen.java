@@ -1040,10 +1040,11 @@ public class SeedMapScreen extends Screen {
         }
         context.enableScissor(viewport.left, viewport.top, viewport.left + viewport.width, viewport.top + viewport.height);
         boolean dots = !MarkerVisibility.iconAt(viewport.scale, config.markerDensity);
-        visibleClusters = MarkerClusterer.cluster(markers,
+        visibleClusters = MarkerDisplayLayout.layout(markers,
                 m -> viewport.worldToScreenX(m.blockX()),
                 m -> viewport.worldToScreenZ(m.blockZ()),
-                MarkerVisibility.clusterRadius(viewport.scale));
+                viewport.left, viewport.top, viewport.width, viewport.height,
+                config.markerDensity, viewport.scale);
         for (MarkerClusterer.Cluster<MapMarker> cluster : visibleClusters) {
             int sx = (int) Math.round(cluster.x());
             int sy = (int) Math.round(cluster.y());
@@ -1054,7 +1055,9 @@ public class SeedMapScreen extends Screen {
             } else {
                 StructureIcons.drawIcon(context, id, sx - 8, sy - 8);
             }
-            if (cluster.size() > 1) {
+            // At wide zoom, count badges cover more terrain than the structures themselves.
+            // The full cluster breakdown remains available on hover or after zooming in.
+            if (cluster.size() > 1 && viewport.scale <= 4.0) {
                 drawCountBadge(context, sx + (dots ? 3 : 6), sy - (dots ? 9 : 10), cluster.size());
             }
         }
