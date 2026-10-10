@@ -42,7 +42,9 @@ public final class SilhouetteRaster {
                     }
                 }
                 // Outside-only stroke: the opaque original icon is drawn on top.
-                int opacity = Math.clamp(Math.round((dilated - inside) * 235), 0, 235);
+                // Normalise alpha gradients by GUI scale: a 1px physical stroke
+                // should remain equally bright at scale 1, 3 and 6.
+                int opacity = Math.clamp(Math.round((dilated - inside) * scale * 225), 0, 235);
                 pixels[sy * size + sx] = opacity == 0 ? 0 : (opacity << 24) | 0xFFFFFF;
             }
         }
