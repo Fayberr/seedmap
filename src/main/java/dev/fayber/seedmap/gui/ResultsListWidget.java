@@ -67,7 +67,7 @@ public final class ResultsListWidget extends ObjectSelectionList<ResultsListWidg
                 StructureIcons.drawSwatch(context, row.color(), x, y);
             }
             context.text(minecraft.font, row.title(), x + 20, y + 1, hovered ? 0xFFFFFFFF : 0xFFF0F0F0, false);
-            context.text(minecraft.font, row.subtitle(), x + 20, y + 10, 0xFF8FA1B3, false);
+            context.text(minecraft.font, row.subtitle(), x + 20, y + 10, 0xFFA3A3A3, false);
         }
 
         @Override
