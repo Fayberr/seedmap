@@ -29,6 +29,7 @@ public final class RenderedItemCapture {
     private record Request(Identifier structure, int epoch) {}
 
     private static final Map<Long, Request> REQUESTS = new HashMap<>();
+    private static final Map<Identifier, Long> REQUEST_POSITION = new HashMap<>();
     private static final Map<Identifier, BufferedImage> IMAGES = new HashMap<>();
     private static final Set<Identifier> IN_FLIGHT = new HashSet<>();
     private static final Set<Identifier> UNSUPPORTED = new HashSet<>();
@@ -47,11 +48,16 @@ public final class RenderedItemCapture {
     public static void request(Identifier structure, int x, int y) {
         if (structure == null || IMAGES.containsKey(structure)
                 || IN_FLIGHT.contains(structure) || UNSUPPORTED.contains(structure)) return;
-        // The map may show many shipwrecks, but only one thumbnail per model
-        // needs capturing. Bound the request queue to guard against huge maps.
-        if (REQUESTS.size() < 64) {
-            REQUESTS.putIfAbsent(at(x, y), new Request(structure, epoch));
+        // At most one pending capture per actual model. A map can display
+        // hundreds of copies of one boat; updating the screen-coordinate match
+        // avoids a long request queue when panning and does not add extra copies.
+        long position = at(x, y);
+        Long previous = REQUEST_POSITION.put(structure, position);
+        if (previous != null && previous.longValue() != position) {
+            Request prior = REQUESTS.get(previous);
+            if (prior != null && prior.structure().equals(structure)) REQUESTS.remove(previous);
         }
+        REQUESTS.put(position, new Request(structure, epoch));
     }
 
     /** Minecraft's normal cached GUI-item atlas. */
@@ -94,6 +100,7 @@ public final class RenderedItemCapture {
         }
         if (IN_FLIGHT.contains(structure) || IN_FLIGHT.size() >= MAX_IN_FLIGHT) return;
         REQUESTS.remove(at(requestedX, requestedY));
+        REQUEST_POSITION.remove(structure);
 
         if (w < 8 || h < 8 || w > 256 || h > 256 || w != h
                 || x < 0 || y < 0 || x + w > texture.getWidth(0)
@@ -169,6 +176,7 @@ public final class RenderedItemCapture {
     public static void clear() {
         epoch++;
         REQUESTS.clear();
+        REQUEST_POSITION.clear();
         IMAGES.clear();
         IN_FLIGHT.clear();
         UNSUPPORTED.clear();
