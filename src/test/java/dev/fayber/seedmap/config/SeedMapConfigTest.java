@@ -44,7 +44,7 @@ class SeedMapConfigTest {
     @Test
     void olderSettingsRetainNewDefaultTrue(@TempDir Path dir) throws Exception {
         Path file = dir.resolve("seedmap.json");
-        Files.writeString(file, "{\\\"lastRadius\\\":5000,\\\"markerDensity\\\":1}");
+        Files.writeString(file, "{\"lastRadius\":5000,\"markerDensity\":1}");
         SeedMapConfig loaded = SeedMapConfig.load(file);
         assertTrue(loaded.hideCrowdedInsteadOfClustering);
         assertFalse(loaded.experimentalIconOutline);
