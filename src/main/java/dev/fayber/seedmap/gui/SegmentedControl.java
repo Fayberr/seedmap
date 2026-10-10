@@ -14,13 +14,13 @@ public final class SegmentedControl {
         }
     }
 
-    private static final int ON = 0xFF3A7BD5;
-    private static final int ON_HOVER = 0xFF4C8DE6;
-    private static final int OFF = 0xFF2A313A;
-    private static final int OFF_HOVER = 0xFF363E48;
+    private static final int ON = 0xFF7AA2F7;
+    private static final int ON_HOVER = 0xFF98B7FF;
+    private static final int OFF = 0xFF1A1A1A;
+    private static final int OFF_HOVER = 0xFF262626;
     private static final int BORDER = 0xFF262626;
-    private static final int TEXT_ON = 0xFFFFFFFF;
-    private static final int TEXT_OFF = 0xFFB8C2CC;
+    private static final int TEXT_ON = 0xFF0F1319;
+    private static final int TEXT_OFF = 0xFFA3A3A3;
 
     private final int x;
     private final int y;
@@ -66,7 +66,7 @@ public final class SegmentedControl {
     }
 
     public boolean mouseClicked(double mx, double my, int button) {
-        if (button != 0 || mx < x || mx >= x + width || my < y || my >= y + height) {
+        if (button != 1 || mx < x || mx >= x + width || my < y || my >= y + height) {
             return false;
         }
         for (int i = 0; i < segments.size(); i++) {
