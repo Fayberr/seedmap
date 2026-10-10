@@ -38,7 +38,9 @@ public final class MarkerVisibility {
                 || path.contains("ancient_city") || path.contains("end_city")) {
             base = 512.0;
         } else if (path.contains("bastion") || path.contains("fortress")) {
-            base = 64.0;
+            // Fortresses and bastions are very dense in the Nether. Disappear
+            // at wider zooms rather than compressing thousands into clusters.
+            base = 8.0;
         } else if (path.contains("trial_chambers")) {
             base = 8.0;
         } else if (path.startsWith("village") || path.contains("pillager_outpost")
