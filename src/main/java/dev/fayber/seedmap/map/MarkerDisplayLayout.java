@@ -70,6 +70,10 @@ public final class MarkerDisplayLayout {
 
     private static final Comparator<MapMarker> MARKER_PRIORITY = Comparator
             .comparingInt((MapMarker marker) -> MarkerVisibility.isLandmark(marker.id()) ? 0 : 1)
+            // Structures take precedence over ubiquitous feature markers
+            // such as amethyst geodes. Feature hits carry a blockY, while
+            // structure hits are 2D positions.
+            .thenComparingInt(marker -> marker.blockY() == null ? 0 : 1)
             .thenComparing(marker -> marker.id().toString())
             .thenComparingInt(MapMarker::blockX)
             .thenComparingInt(MapMarker::blockZ)

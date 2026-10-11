@@ -161,6 +161,10 @@ class MarkerDisplayLayoutTest {
                 .filter(m -> m.blockX() / scale > 150 && m.blockX() / scale < 600
                           && m.blockZ() / scale > 145 && m.blockZ() / scale < 425)
                 .toList();
+        assertTrue(before.stream().anyMatch(c -> c.members().get(0).equals(new MapMarker(boat, 380, 255, null))),
+                "shipwreck must be selected ahead of dense geode features in its cell");
+        assertTrue(after.stream().anyMatch(c -> c.members().get(0).equals(new MapMarker(boat, 380, 255, null))),
+                "same shipwreck must remain selected after panning");
         assertFalse(innerBefore.isEmpty(), "test needs stable interior markers");
         assertEquals(innerBefore, innerAfter,
                 "moving the query must not replace or hide markers still deep within the map");
