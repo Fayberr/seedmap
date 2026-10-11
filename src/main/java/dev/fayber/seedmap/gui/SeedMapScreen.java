@@ -1028,15 +1028,23 @@ public class SeedMapScreen extends Screen {
         if (session == null) return;
         Set<Identifier> enabled = MarkerVisibility.enabledAtScale(
                 session.enabledStructures(), viewport.scale, config.markerDensity);
-        List<RegionHit> hits = session.structures().query(
-                viewport.minBlockX(), viewport.minBlockZ(), viewport.maxBlockX(), viewport.maxBlockZ(), enabled);
+        // Query whole world-anchored selection cells even when they straddle
+        // the viewport edge. Otherwise panning silently changes winners and
+        // cluster centers as off-screen candidates enter/leave the query.
+        int padding = MarkerDisplayLayout.queryPaddingPixels(
+                viewport.width, viewport.height, config.markerDensity, viewport.scale,
+                config.hideCrowdedInsteadOfClustering);
+        int minX = (int) Math.floor(viewport.screenToWorldX(viewport.left - padding));
+        int minZ = (int) Math.floor(viewport.screenToWorldZ(viewport.top - padding));
+        int maxX = (int) Math.ceil(viewport.screenToWorldX(viewport.left + viewport.width + padding));
+        int maxZ = (int) Math.ceil(viewport.screenToWorldZ(viewport.top + viewport.height + padding));
+        List<RegionHit> hits = session.structures().query(minX, minZ, maxX, maxZ, enabled);
         List<MapMarker> markers = new ArrayList<>(hits.size());
         for (RegionHit hit : hits) markers.add(MapMarker.of(hit));
         if (viewport.scale <= FEATURE_MAX_SCALE) {
             Set<Identifier> features = session.enabledFeatures();
             if (!features.isEmpty()) {
-                for (var hit : session.features().query(viewport.minBlockX(), viewport.minBlockZ(),
-                        viewport.maxBlockX(), viewport.maxBlockZ(), features)) {
+                for (var hit : session.features().query(minX, minZ, maxX, maxZ, features)) {
                     markers.add(MapMarker.of(hit));
                 }
             }

@@ -123,6 +123,76 @@ class MarkerDisplayLayoutTest {
         }
     }
 
+    @Test void viewportFrequencyChangesCannotSuppressUnchangedInteriorMarkers() {
+        var amethyst = net.minecraft.resources.Identifier.withDefaultNamespace("amethyst_geode");
+        var boat = net.minecraft.resources.Identifier.withDefaultNamespace("shipwreck");
+        List<MapMarker> world = new ArrayList<>();
+        // Densely populated map: much more than the balanced-mode budget.
+        for (int x = -250; x <= 1300; x += 34) {
+            for (int z = -200; z <= 900; z += 38) {
+                world.add(new MapMarker(amethyst, x, z, null));
+            }
+        }
+        world.add(new MapMarker(boat, 380, 255, null));
+        int width = 820, height = 590, density = MarkerVisibility.BALANCED;
+        double scale = 4;
+        int gutter = MarkerDisplayLayout.queryPaddingPixels(width, height, density, scale, true);
+        // The underlying query is recomputed as the viewport pans by 27px.
+        List<MapMarker> first = world.stream().filter(m ->
+                m.blockX() >= -gutter * scale && m.blockX() < (width + gutter) * scale
+                && m.blockZ() >= -gutter * scale && m.blockZ() < (height + gutter) * scale).toList();
+        List<MapMarker> second = world.stream().filter(m ->
+                m.blockX() >= (-gutter - 27) * scale && m.blockX() < (width + gutter - 27) * scale
+                && m.blockZ() >= (-gutter + 11) * scale && m.blockZ() < (height + gutter + 11) * scale).toList();
+        var before = MarkerDisplayLayout.hideWorldAligned(first,
+                MapMarker::blockX, MapMarker::blockZ,
+                m -> m.blockX() / scale, m -> m.blockZ() / scale,
+                0, 0, width, height, density, scale);
+        var after = MarkerDisplayLayout.hideWorldAligned(second,
+                MapMarker::blockX, MapMarker::blockZ,
+                m -> m.blockX() / scale + 27, m -> m.blockZ() / scale - 11,
+                0, 0, width, height, density, scale);
+
+        var innerBefore = before.stream().map(c -> c.members().get(0))
+                .filter(m -> m.blockX() / scale > 150 && m.blockX() / scale < 600
+                          && m.blockZ() / scale > 145 && m.blockZ() / scale < 425)
+                .toList();
+        var innerAfter = after.stream().map(c -> c.members().get(0))
+                .filter(m -> m.blockX() / scale > 150 && m.blockX() / scale < 600
+                          && m.blockZ() / scale > 145 && m.blockZ() / scale < 425)
+                .toList();
+        assertFalse(innerBefore.isEmpty(), "test needs stable interior markers");
+        assertEquals(innerBefore, innerAfter,
+                "moving the query must not replace or hide markers still deep within the map");
+        assertTrue(before.size() <= MarkerDisplayLayout.budget(density, scale));
+        assertTrue(after.size() <= MarkerDisplayLayout.budget(density, scale));
+    }
+
+    @Test void crossingTheOldClusterBudgetCannotChangeExistingGroups() {
+        List<Dot> points = new ArrayList<>();
+        for (int x = 30; x < 700; x += 110) {
+            for (int y = 50; y < 490; y += 90) points.add(new Dot(x, y));
+        }
+        var original = MarkerDisplayLayout.layoutWorldAligned(points,
+                Dot::x, Dot::y, Dot::x, Dot::y,
+                0, 0, 840, 540, MarkerVisibility.BALANCED, 4);
+        // Two extra distant markers must not switch existing markers to a
+        // different clustering algorithm or move the old centroids.
+        var larger = new ArrayList<>(points);
+        larger.add(new Dot(-180, -120));
+        larger.add(new Dot(1000, 870));
+        var expanded = MarkerDisplayLayout.layoutWorldAligned(larger,
+                Dot::x, Dot::y, Dot::x, Dot::y,
+                0, 0, 840, 540, MarkerVisibility.BALANCED, 4);
+        for (var cluster : original) {
+            assertTrue(expanded.stream().anyMatch(c ->
+                    c.members().equals(cluster.members())
+                    && Math.abs(c.x() - cluster.x()) < 0.001
+                    && Math.abs(c.y() - cluster.y()) < 0.001),
+                    "distant candidates must not affect existing world-cell groups");
+        }
+    }
+
     @Test void allModeNeverDropsMarkers() {
         var points = new ArrayList<Dot>();
         for (int x = 0; x < 100; x++) points.add(new Dot(x * 20, 10));
