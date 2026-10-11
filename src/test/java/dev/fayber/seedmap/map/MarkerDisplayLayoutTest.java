@@ -130,7 +130,7 @@ class MarkerDisplayLayoutTest {
         // Densely populated map: much more than the balanced-mode budget.
         for (int x = -250; x <= 1300; x += 34) {
             for (int z = -200; z <= 900; z += 38) {
-                world.add(new MapMarker(amethyst, x, z, null));
+                world.add(new MapMarker(amethyst, x, z, 64));
             }
         }
         world.add(new MapMarker(boat, 380, 255, null));
