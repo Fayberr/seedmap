@@ -170,7 +170,7 @@ class MarkerDisplayLayoutTest {
 
     @Test void crossingTheOldClusterBudgetCannotChangeExistingGroups() {
         List<Dot> points = new ArrayList<>();
-        for (int x = 30; x < 700; x += 110) {
+        for (int x = 30; x < 800; x += 90) {
             for (int y = 50; y < 490; y += 90) points.add(new Dot(x, y));
         }
         var original = MarkerDisplayLayout.layoutWorldAligned(points,
