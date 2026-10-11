@@ -5,3 +5,6 @@ out/
 .idea/
 *.iml
 .DS_Store
+
+# Minecraft logs produced by registry/world-generation tests
+logs/

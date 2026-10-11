@@ -1,5 +1,7 @@
 # SeedMap
 
+[Modrinth](https://modrinth.com/mod/fayber-seedmap)
+
 A seed-based world map inside Minecraft. Client-side Fabric mod for Minecraft 26.3.
 
 Press **M** to open the map. It predicts biomes and structure locations from the world seed, including unexplored regions.
