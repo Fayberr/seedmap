@@ -4,10 +4,13 @@ import net.minecraft.core.Holder;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.structure.Structure;
 
-public record StructureHit(Holder<Structure> structure, ChunkPos chunk, int blockX, int blockZ, double distance) {
+public record StructureHit(Holder<Structure> structure, ChunkPos chunk, int blockX, int blockZ, double distance, boolean hasShip) {
+    public StructureHit(Holder<Structure> structure, ChunkPos chunk, int blockX, int blockZ, double distance) {
+        this(structure, chunk, blockX, blockZ, distance, false);
+    }
     public static StructureHit of(RegionHit hit, int centerBlockX, int centerBlockZ) {
         double dx = hit.blockX() - centerBlockX;
         double dz = hit.blockZ() - centerBlockZ;
-        return new StructureHit(hit.structure(), hit.chunk(), hit.blockX(), hit.blockZ(), Math.sqrt(dx * dx + dz * dz));
+        return new StructureHit(hit.structure(), hit.chunk(), hit.blockX(), hit.blockZ(), Math.sqrt(dx * dx + dz * dz), hit.hasShip());
     }
 }

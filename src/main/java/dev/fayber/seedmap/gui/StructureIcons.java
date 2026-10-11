@@ -16,6 +16,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 public final class StructureIcons {
+    public static final Identifier END_CITY_WITH_SHIP = Identifier.withDefaultNamespace("end_city_with_ship");
+
     public static final Identifier GENERIC = Identifier.fromNamespaceAndPath(SeedMapClient.MOD_ID, "textures/gui/icons/generic.png");
     public static final Identifier ARROW = Identifier.fromNamespaceAndPath(SeedMapClient.MOD_ID, "textures/gui/arrow.png");
 
@@ -85,6 +87,15 @@ public final class StructureIcons {
             drawMapSprite(context, "red_x", x, y);
             return;
         }
+        if (structureId.equals(END_CITY_WITH_SHIP)) {
+            drawIcon(context, Identifier.withDefaultNamespace("end_city"), x, y);
+            context.pose().pushMatrix();
+            context.pose().translate(x + 8, y + 8);
+            context.pose().scale(0.5f, 0.5f);
+            context.item(new ItemStack(Items.ELYTRA), 0, 0);
+            context.pose().popMatrix();
+            return;
+        }
         Identifier icon = iconFor(structureId);
         if (!icon.equals(GENERIC)) {
             context.blit(RenderPipelines.GUI_TEXTURED, icon, x, y, 0, 0, 16, 16, 16, 16);
@@ -121,6 +132,7 @@ public final class StructureIcons {
     }
 
     public static String displayName(Identifier structureId) {
+        if (structureId.equals(END_CITY_WITH_SHIP)) return "End City (Ship, Elytra)";
         String[] parts = structureId.getPath().split("_");
         StringBuilder out = new StringBuilder();
         for (String part : parts) {

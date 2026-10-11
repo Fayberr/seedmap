@@ -10,6 +10,7 @@ Press **M** to open the map. It predicts biomes and structure locations from the
 
 - Overworld, Nether and End maps with pan and zoom.
 - Structure icons, toggleable types, biome and structure search.
+- End Cities with ships show a small elytra over the purpur icon and are labelled in tooltips and search results. This predicts generated ships, not whether another player has taken the elytra.
 - Find amethyst geodes, show slime chunks and explore biome Y layers.
 - Search within configurable radii and place waypoints from the results.
 - HUD direction arrow and in-world waypoint beam.

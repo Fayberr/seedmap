@@ -183,6 +183,23 @@ class SeedWorldTest {
     }
 
     @Test
+    void endCityShipsAreStableAndReachMapAndSearchResults() {
+        SeedWorld end = SeedWorld.create(1L, Dimension.END);
+        Holder<Structure> city = end.structure(Identifier.withDefaultNamespace("end_city"));
+        List<StructureHit> hits = end.findStructures(city, new ChunkPos(0, 0), 10000 / 16, 20);
+        assertTrue(hits.stream().anyMatch(StructureHit::hasShip), "ships present");
+        assertTrue(hits.stream().anyMatch(hit -> !hit.hasShip()), "shipless cities present");
+        assertEquals(hits, end.findStructures(city, new ChunkPos(0, 0), 10000 / 16, 20));
+        for (StructureHit hit : hits) {
+            RegionHit region = new RegionHit(hit.structure(), hit.chunk(), hit.blockX(), hit.blockZ(), hit.hasShip());
+            var marker = dev.fayber.seedmap.map.MapMarker.of(region);
+            var result = dev.fayber.seedmap.gui.SearchResult.of(hit);
+            assertEquals(marker.id(), result.structureId());
+            assertEquals(hit.hasShip(), result.name().contains("Elytra"));
+        }
+    }
+
+    @Test
     void structureListsFollowTheDimension() {
         List<String> nether = SeedWorld.create(1L, Dimension.NETHER).allStructures().stream().map(e -> SeedWorld.idOf(e).toString()).toList();
         assertTrue(nether.contains("minecraft:fortress"));

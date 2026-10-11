@@ -92,6 +92,7 @@ public final class SeedWorld {
     private final List<Holder<Structure>> structures;
     private final List<Holder<Biome>> biomes;
     private final FeatureFinder features;
+    private final java.util.concurrent.ConcurrentHashMap<Long, Boolean> endShipCache = new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.concurrent.ConcurrentHashMap<Long, Boolean> terrainCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     public static SeedWorld create(long seed) {
@@ -309,7 +310,7 @@ public final class SeedWorld {
     }
 
     public Optional<RegionHit> structureInRegionConfirmed(Holder<StructureSet> set, int regionX, int regionZ) {
-        return structureInRegion(set, regionX, regionZ).filter(this::confirm);
+        return structureInRegion(set, regionX, regionZ).filter(this::confirm).map(this::withShip);
     }
 
     public List<RegionHit> concentricRingHits(Holder<StructureSet> set) {
@@ -404,6 +405,21 @@ public final class SeedWorld {
         Structure structure = holder.value();
         return structure instanceof WoodlandMansionStructure || idOf(holder).equals(END_CITY)
                 || structure instanceof SinglePieceStructure || structure instanceof OceanMonumentStructure;
+    }
+
+    private RegionHit withShip(RegionHit hit) {
+        return new RegionHit(hit.structure(), hit.chunk(), hit.blockX(), hit.blockZ(), hasEndShip(hit.structure(), hit.chunk()));
+    }
+
+    private boolean hasEndShip(Holder<Structure> structure, ChunkPos chunk) {
+        if (!idOf(structure).equals(END_CITY)) return false;
+        return endShipCache.computeIfAbsent(chunk.pack(), key -> {
+            BlockPos start = lowestIn5by5Offset7(chunk);
+            if (start == null) return false;
+            WorldgenRandom random = makeRandom(chunk);
+            Rotation rotation = Rotation.getRandom(random);
+            return EndCityLayout.hasShip(start, rotation, random);
+        });
     }
 
     public boolean confirm(RegionHit hit) {
@@ -522,7 +538,7 @@ public final class SeedWorld {
                 .sorted(Comparator.comparingDouble(StructureHit::distance))
                 .toList()) {
             if (confirm(new RegionHit(hit.structure(), hit.chunk(), hit.blockX(), hit.blockZ()))) {
-                confirmed.add(hit);
+                confirmed.add(new StructureHit(hit.structure(), hit.chunk(), hit.blockX(), hit.blockZ(), hit.distance(), hasEndShip(hit.structure(), hit.chunk())));
                 if (confirmed.size() >= maxResults) break;
             }
         }

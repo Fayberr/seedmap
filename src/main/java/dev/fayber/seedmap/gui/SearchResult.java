@@ -8,7 +8,7 @@ import net.minecraft.resources.Identifier;
 
 public record SearchResult(String name, int x, int z, double distance, Identifier structureId, int color) {
     public static SearchResult of(StructureHit hit) {
-        Identifier id = SeedWorld.idOf(hit.structure());
+        Identifier id = hit.hasShip() ? StructureIcons.END_CITY_WITH_SHIP : SeedWorld.idOf(hit.structure());
         return new SearchResult(StructureIcons.displayName(id), hit.blockX(), hit.blockZ(), hit.distance(), id, StructureIcons.colorFor(id));
     }
 
