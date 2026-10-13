@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "package": "dev.fayber.seedmap.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "GuiItemAtlasCopySourceMixin",
+    "OversizedItemCopySourceMixin",
+    "GuiRendererCaptureMixin",
+    "GuiRenderStateCaptureMixin",
+    "OversizedItemRendererCaptureMixin",
+    "PictureInPictureTextureAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

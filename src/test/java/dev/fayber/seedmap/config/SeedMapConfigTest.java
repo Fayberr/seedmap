@@ -27,6 +27,30 @@ class SeedMapConfigTest {
     }
 
     @Test
+    void newVisibilityModesHaveSafeDefaultsAndRoundTrip(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("seedmap.json");
+        SeedMapConfig config = SeedMapConfig.defaults();
+        assertTrue(config.hideCrowdedInsteadOfClustering);
+        assertFalse(config.experimentalIconOutline);
+        config.hideCrowdedInsteadOfClustering = false;
+        config.experimentalIconOutline = true;
+        config.save(file);
+
+        SeedMapConfig loaded = SeedMapConfig.load(file);
+        assertFalse(loaded.hideCrowdedInsteadOfClustering);
+        assertTrue(loaded.experimentalIconOutline);
+    }
+
+    @Test
+    void olderSettingsRetainNewDefaultTrue(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("seedmap.json");
+        Files.writeString(file, "{\"lastRadius\":5000,\"markerDensity\":1}");
+        SeedMapConfig loaded = SeedMapConfig.load(file);
+        assertTrue(loaded.hideCrowdedInsteadOfClustering);
+        assertFalse(loaded.experimentalIconOutline);
+    }
+
+    @Test
     void repeatedSavesReplaceTheFileAndLeaveNoTempBehind(@TempDir Path dir) throws Exception {
         Path file = dir.resolve("seedmap.json");
         SeedMapConfig config = SeedMapConfig.defaults();

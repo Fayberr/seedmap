@@ -12,6 +12,9 @@
   "entrypoints": {
     "client": [
       "dev.fayber.seedmap.SeedMapClient"
+    ],
+    "modmenu": [
+      "dev.fayber.seedmap.compat.SeedMapModMenu"
     ]
   },
   "depends": {
@@ -20,5 +23,11 @@
     "minecraft": "~26.3",
     "java": ">=25"
   },
-  "icon": "assets/seedmap/icon.png"
+  "icon": "assets/seedmap/icon.png",
+  "suggests": {
+    "modmenu": "*"
+  },
+  "mixins": [
+    "seedmap.mixins.json"
+  ]
 }

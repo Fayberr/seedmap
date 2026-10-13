@@ -11,12 +11,18 @@ Press **M** to open the map. It predicts biomes and structure locations from the
 - Overworld, Nether and End maps with pan and zoom.
 - Structure icons, toggleable types, biome and structure search.
 - End Cities with ships show a small elytra over the purpur icon and are labelled in tooltips and search results. This predicts generated ships, not whether another player has taken the elytra.
+- Default-on clutter hiding without marker clustering: crowded icons are hidden at real positions instead of replaced with cluster counts.
+- Optional legacy clustering and experimental white icon outlines (off by default).
+- Strict, unsmoothed 2-physical-pixel silhouette border: outlines follow pixel staircases and corners instead of rounding them off.
+- 3D item/model outlines use Minecraft 26.3's already rendered GUI item atlas (including oversized picture-in-picture models and resource packs), with only two asynchronous capture readbacks allowed at a time. Captured silhouettes are cached and invalidated by resource pack reloads. Note: GUI/atlas GPU-backend compatibility still requires an Ingame test.
 - Find amethyst geodes, show slime chunks and explore biome Y layers.
 - Search within configurable radii and place waypoints from the results.
 - HUD direction arrow and in-world waypoint beam.
+- Optional translucent Freecam camera arrow, distinct from your real player marker (supports detached camera entities and WI Freecam).
 - Coordinates, distance measurement, chunk grid, spawn marker and PNG export.
 - Background tile generation and on-disk cache.
 - Per-server seed storage. No server mod required.
+- Optional Mod Menu integration: Mods → SeedMap → Configure opens the existing settings screen.
 
 ## Install and use
 

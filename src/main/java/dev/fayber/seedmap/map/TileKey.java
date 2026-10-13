@@ -7,7 +7,7 @@ public record TileKey(int lod, int tileX, int tileZ) {
     public static final int TILE_PIXELS = 128;
 
     public static final int MAX_TILES_PER_VIEW = 512;
-    private static final int[] BLOCKS_PER_PIXEL = {4, 8, 16, 32, 64, 128};
+    private static final int[] BLOCKS_PER_PIXEL = {4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096};
     private static final double LEVEL_SWITCH = Math.sqrt(2.0);
     public static final int LOD_COUNT = BLOCKS_PER_PIXEL.length;
 

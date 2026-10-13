@@ -74,6 +74,10 @@ public final class StructureIcons {
         ITEMS.put(Identifier.withDefaultNamespace(structurePath), item);
     }
 
+    public static void clearIconCache() {
+        ICON_CACHE.clear();
+    }
+
     public static Identifier iconFor(Identifier structureId) {
         return ICON_CACHE.computeIfAbsent(structureId, id -> {
             Identifier candidate = Identifier.fromNamespaceAndPath(SeedMapClient.MOD_ID, "textures/gui/icons/" + id.getPath() + ".png");
@@ -82,13 +86,38 @@ public final class StructureIcons {
         });
     }
 
+    /**
+     * Optional alpha-contour outline. The contour is calculated from the visible
+     * PNG silhouette instead of the square icon bounds. Texture PNG masks are
+     * supported for map atlas sprites, custom icons and flat item sprites.
+     */
+    public static void drawIcon(GuiGraphicsExtractor context, Identifier structureId,
+                                int x, int y, boolean shapeOutline) {
+        if (shapeOutline && structureId != null) {
+            Identifier outlineId = structureId.equals(END_CITY_WITH_SHIP)
+                    ? Identifier.withDefaultNamespace("end_city") : structureId;
+            Identifier custom = iconFor(outlineId);
+            if (custom.equals(GENERIC)) custom = null;
+            Identifier decoration = MAP_SPRITES.get(outlineId);
+            Item item = ITEMS.get(outlineId);
+            IconSilhouette.draw(context, outlineId, x, y,
+                    custom, decoration == null ? null : decoration.getPath(), item);
+        }
+        drawIconImpl(context, structureId, x, y, shapeOutline);
+    }
+
     public static void drawIcon(GuiGraphicsExtractor context, Identifier structureId, int x, int y) {
+        drawIconImpl(context, structureId, x, y, false);
+    }
+
+    private static void drawIconImpl(GuiGraphicsExtractor context, Identifier structureId,
+                                     int x, int y, boolean captureItem) {
         if (structureId == null) {
             drawMapSprite(context, "red_x", x, y);
             return;
         }
         if (structureId.equals(END_CITY_WITH_SHIP)) {
-            drawIcon(context, Identifier.withDefaultNamespace("end_city"), x, y);
+            drawIconImpl(context, Identifier.withDefaultNamespace("end_city"), x, y, captureItem);
             context.pose().pushMatrix();
             context.pose().translate(x + 8, y + 8);
             context.pose().scale(0.5f, 0.5f);
@@ -109,7 +138,12 @@ public final class StructureIcons {
         }
         Item item = ITEMS.get(structureId);
         if (item != null) {
-            context.item(new ItemStack(item), x, y);
+            if (captureItem) RenderedItemCapture.beginItem(structureId);
+            try {
+                context.item(new ItemStack(item), x, y);
+            } finally {
+                if (captureItem) RenderedItemCapture.endItem();
+            }
             return;
         }
         context.blit(RenderPipelines.GUI_TEXTURED, icon, x, y, 0, 0, 16, 16, 16, 16, colorFor(structureId));
