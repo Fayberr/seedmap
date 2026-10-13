@@ -10,6 +10,8 @@ Press **M** to open the map. It predicts biomes and structure locations from the
 
 - Overworld, Nether and End maps with pan and zoom.
 - Structure icons, toggleable types, biome and structure search.
+- Bastion variants use a piglin head with a bottom-right overlay: saddle for Hoglin Stables, chest for Treasure Room, lantern for Bridge and red bed for Housing Units. Map tooltips and search results include the variant.
+- End City Elytra and bastion overlays are 10 pixels wide. Experimental icon outlines follow the combined base and overlay silhouette.
 - End Cities with ships show a small elytra over the purpur icon and are labelled in tooltips and search results. This predicts generated ships, not whether another player has taken the elytra.
 - Default-on clutter hiding without marker clustering: crowded icons are hidden at real positions instead of replaced with cluster counts.
 - Optional legacy clustering and experimental white icon outlines (off by default).

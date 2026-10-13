@@ -91,17 +91,39 @@ public final class StructureIcons {
      * PNG silhouette instead of the square icon bounds. Texture PNG masks are
      * supported for map atlas sprites, custom icons and flat item sprites.
      */
+    public static Identifier baseIcon(Identifier id) {
+        if (END_CITY_WITH_SHIP.equals(id)) return Identifier.withDefaultNamespace("end_city");
+        if (dev.fayber.seedmap.worldgen.BastionType.fromMarker(id) != null)
+            return Identifier.withDefaultNamespace("bastion_remnant");
+        return id;
+    }
+
+    public static Item overlayItem(Identifier id) {
+        if (END_CITY_WITH_SHIP.equals(id)) return Items.ELYTRA;
+        var type = dev.fayber.seedmap.worldgen.BastionType.fromMarker(id);
+        if (type == null) return null;
+        return switch (type) {
+            case HOUSING -> Items.BED.red();
+            case STABLES -> Items.SADDLE;
+            case TREASURE -> Items.CHEST;
+            case BRIDGE -> Items.LANTERN;
+        };
+    }
+
+    public static Identifier overlayKey(Item item) {
+        return Identifier.fromNamespaceAndPath(SeedMapClient.MOD_ID,
+                "overlay/" + net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item).getPath());
+    }
+
     public static void drawIcon(GuiGraphicsExtractor context, Identifier structureId,
                                 int x, int y, boolean shapeOutline) {
         if (shapeOutline && structureId != null) {
-            Identifier outlineId = structureId.equals(END_CITY_WITH_SHIP)
-                    ? Identifier.withDefaultNamespace("end_city") : structureId;
-            Identifier custom = iconFor(outlineId);
+            Identifier base = baseIcon(structureId);
+            Identifier custom = iconFor(base);
             if (custom.equals(GENERIC)) custom = null;
-            Identifier decoration = MAP_SPRITES.get(outlineId);
-            Item item = ITEMS.get(outlineId);
-            IconSilhouette.draw(context, outlineId, x, y,
-                    custom, decoration == null ? null : decoration.getPath(), item);
+            Identifier decoration = MAP_SPRITES.get(base);
+            IconSilhouette.draw(context, structureId, x, y, custom,
+                    decoration == null ? null : decoration.getPath(), ITEMS.get(base));
         }
         drawIconImpl(context, structureId, x, y, shapeOutline);
     }
@@ -116,13 +138,18 @@ public final class StructureIcons {
             drawMapSprite(context, "red_x", x, y);
             return;
         }
-        if (structureId.equals(END_CITY_WITH_SHIP)) {
-            drawIconImpl(context, Identifier.withDefaultNamespace("end_city"), x, y, captureItem);
+        Item overlay = overlayItem(structureId);
+        if (overlay != null) {
+            drawIconImpl(context, baseIcon(structureId), x, y, captureItem);
             context.pose().pushMatrix();
-            context.pose().translate(x + 8, y + 8);
-            context.pose().scale(0.5f, 0.5f);
-            context.item(new ItemStack(Items.ELYTRA), 0, 0);
-            context.pose().popMatrix();
+            context.pose().translate(x + CompositeSilhouette.OVERLAY_OFFSET, y + CompositeSilhouette.OVERLAY_OFFSET);
+            context.pose().scale(CompositeSilhouette.OVERLAY_SIZE / 16f, CompositeSilhouette.OVERLAY_SIZE / 16f);
+            if (captureItem) RenderedItemCapture.beginItem(overlayKey(overlay));
+            try { context.item(new ItemStack(overlay), 0, 0); }
+            finally {
+                if (captureItem) RenderedItemCapture.endItem();
+                context.pose().popMatrix();
+            }
             return;
         }
         Identifier icon = iconFor(structureId);
@@ -167,6 +194,8 @@ public final class StructureIcons {
 
     public static String displayName(Identifier structureId) {
         if (structureId.equals(END_CITY_WITH_SHIP)) return "End City (Ship, Elytra)";
+        var bastionType = dev.fayber.seedmap.worldgen.BastionType.fromMarker(structureId);
+        if (bastionType != null) return "Bastion Remnant (" + bastionType.label() + ")";
         String[] parts = structureId.getPath().split("_");
         StringBuilder out = new StringBuilder();
         for (String part : parts) {

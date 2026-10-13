@@ -200,6 +200,58 @@ class SeedWorldTest {
     }
 
     @Test
+    void bastionVariantsReachMapAndSearchWithoutChangingStructureIdentity() {
+        SeedWorld nether = SeedWorld.create(1L, Dimension.NETHER);
+        var bastion = nether.structure(Identifier.withDefaultNamespace("bastion_remnant"));
+        var hits = nether.findStructures(bastion, new ChunkPos(0, 0), 10000 / 16, 80);
+        assertEquals(4, hits.stream().map(StructureHit::bastionType).distinct().count());
+        assertEquals(hits, nether.findStructures(bastion, new ChunkPos(0, 0), 10000 / 16, 80));
+        for (var hit : hits) {
+            assertNotNull(hit.bastionType());
+            assertEquals(bastion, hit.structure());
+            var marker = dev.fayber.seedmap.map.MapMarker.of(new RegionHit(hit.structure(), hit.chunk(),
+                    hit.blockX(), hit.blockZ(), false, hit.bastionType()));
+            var result = dev.fayber.seedmap.gui.SearchResult.of(hit);
+            assertEquals(marker.id(), result.structureId());
+            assertTrue(result.name().contains(hit.bastionType().label()));
+        }
+    }
+
+    @Test
+    void bastionTypesMatchVanillasActualGeneratedFirstPiece() throws Exception {
+        var nether = SeedWorld.create(1L, Dimension.NETHER);
+        var bastion = nether.structure(Identifier.withDefaultNamespace("bastion_remnant"));
+        var lookupField = Class.forName(SeedWorld.class.getName() + "$VanillaWrapperLookupHolder")
+                .getDeclaredField("INSTANCE");
+        lookupField.setAccessible(true);
+        var provider = (net.minecraft.core.HolderLookup.Provider) lookupField.get(null);
+        var registries = new net.minecraft.core.RegistryAccess.ImmutableRegistryAccess(
+                provider.listRegistries().map(r -> (net.minecraft.core.Registry<?>) r).toList());
+        var templatesField = Class.forName(EndCityLayout.class.getName() + "$Templates").getDeclaredField("INSTANCE");
+        templatesField.setAccessible(true);
+        var templates = (net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager) templatesField.get(null);
+        var generator = (net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator) privateField(nether, "chunkGenerator");
+        var randomState = (net.minecraft.world.level.levelgen.RandomState) privateField(nether, "randomState");
+        var height = (net.minecraft.world.level.LevelHeightAccessor) privateField(nether, "heightAccessor");
+        var hits = nether.findStructures(bastion, new ChunkPos(0, 0), 10000 / 16, 16);
+        for (var hit : hits) {
+            var context = new Structure.GenerationContext(registries, generator, generator.getBiomeSource(),
+                    randomState.createClimateSampler(net.minecraft.world.level.levelgen.densityfunction.SamplerContext.EMPTY_UNCACHED), randomState, templates, 1L, hit.chunk(), height, b -> true);
+            var pieces = ((net.minecraft.world.level.levelgen.structure.structures.JigsawStructure) bastion.value()).findGenerationPoint(context).orElseThrow()
+                    .getPiecesBuilder().build().pieces();
+            var first = (net.minecraft.world.level.levelgen.structure.PoolElementStructurePiece) pieces.get(0);
+            var element = (net.minecraft.world.level.levelgen.structure.pools.SinglePoolElement) first.getElement();
+            assertEquals(BastionType.fromTemplate(element.getTemplateLocation()), hit.bastionType(), hit.chunk().toString());
+        }
+    }
+
+    private static Object privateField(Object target, String name) throws Exception {
+        var field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        return field.get(target);
+    }
+
+    @Test
     void structureListsFollowTheDimension() {
         List<String> nether = SeedWorld.create(1L, Dimension.NETHER).allStructures().stream().map(e -> SeedWorld.idOf(e).toString()).toList();
         assertTrue(nether.contains("minecraft:fortress"));

@@ -310,7 +310,7 @@ public final class SeedWorld {
     }
 
     public Optional<RegionHit> structureInRegionConfirmed(Holder<StructureSet> set, int regionX, int regionZ) {
-        return structureInRegion(set, regionX, regionZ).filter(this::confirm).map(this::withShip);
+        return structureInRegion(set, regionX, regionZ).filter(this::confirm).map(this::withDetails);
     }
 
     public List<RegionHit> concentricRingHits(Holder<StructureSet> set) {
@@ -407,8 +407,20 @@ public final class SeedWorld {
                 || structure instanceof SinglePieceStructure || structure instanceof OceanMonumentStructure;
     }
 
-    private RegionHit withShip(RegionHit hit) {
-        return new RegionHit(hit.structure(), hit.chunk(), hit.blockX(), hit.blockZ(), hasEndShip(hit.structure(), hit.chunk()));
+    private BastionType bastionType(Holder<Structure> holder, ChunkPos chunk) {
+        if (!idOf(holder).equals(Identifier.withDefaultNamespace("bastion_remnant"))
+                || !(holder.value() instanceof JigsawStructure jigsaw)) return null;
+        // Vanilla 26.3: constant start height consumes no random draw,
+        // followed by rotation, then weighted start-pool selection.
+        var random = makeRandom(chunk);
+        Rotation.getRandom(random);
+        var element = jigsaw.getStartPool().value().getRandomTemplate(random);
+        return element instanceof net.minecraft.world.level.levelgen.structure.pools.SinglePoolElement single
+                ? BastionType.fromTemplate(single.getTemplateLocation()) : null;
+    }
+
+    private RegionHit withDetails(RegionHit hit) {
+        return new RegionHit(hit.structure(), hit.chunk(), hit.blockX(), hit.blockZ(), hasEndShip(hit.structure(), hit.chunk()), bastionType(hit.structure(), hit.chunk()));
     }
 
     private boolean hasEndShip(Holder<Structure> structure, ChunkPos chunk) {
@@ -538,7 +550,7 @@ public final class SeedWorld {
                 .sorted(Comparator.comparingDouble(StructureHit::distance))
                 .toList()) {
             if (confirm(new RegionHit(hit.structure(), hit.chunk(), hit.blockX(), hit.blockZ()))) {
-                confirmed.add(new StructureHit(hit.structure(), hit.chunk(), hit.blockX(), hit.blockZ(), hit.distance(), hasEndShip(hit.structure(), hit.chunk())));
+                confirmed.add(new StructureHit(hit.structure(), hit.chunk(), hit.blockX(), hit.blockZ(), hit.distance(), hasEndShip(hit.structure(), hit.chunk()), bastionType(hit.structure(), hit.chunk())));
                 if (confirmed.size() >= maxResults) break;
             }
         }

@@ -72,22 +72,11 @@ public final class IconSilhouette {
     private static Optional<Entry> makeTexture(Minecraft client, ResourceManager manager,
                     Identifier structure, int guiScale, Identifier customPng,
                     String mapSprite, Item item) {
-        BufferedImage source = null;
-        if (customPng != null) source = load(manager, customPng);
-        if (source == null && mapSprite != null) {
-            source = load(manager, Identifier.fromNamespaceAndPath("minecraft",
-                    "textures/map/decorations/" + mapSprite + ".png"));
-        }
-        if (source == null && item != null) {
-            // Prefer the rendered model alpha. Flat generated/handheld items
-            // have an exact PNG silhouette without needing a GPU readback.
-            // 3D models deliberately have no guessed square fallback.
-            source = RenderedItemCapture.cached(structure);
-            if (source == null) {
-                ItemModelTexture.Result flat = ItemModelTexture.resolve(
-                        manager, BuiltInRegistries.ITEM.getKey(item));
-                if (flat.texture() != null) source = load(manager, flat.texture());
-            }
+        BufferedImage source = source(manager, StructureIcons.baseIcon(structure), customPng, mapSprite, item);
+        Item overlay = StructureIcons.overlayItem(structure);
+        if (overlay != null) {
+            BufferedImage top = source(manager, StructureIcons.overlayKey(overlay), null, null, overlay);
+            source = CompositeSilhouette.combine(source, top);
         }
         if (source == null) return Optional.empty();
 
@@ -118,6 +107,21 @@ public final class IconSilhouette {
         }
     }
 
+    private static BufferedImage source(ResourceManager manager, Identifier key,
+                                        Identifier customPng, String mapSprite, Item item) {
+        BufferedImage image = customPng == null ? null : load(manager, customPng);
+        if (image == null && mapSprite != null) image = load(manager,
+                Identifier.withDefaultNamespace("textures/map/decorations/" + mapSprite + ".png"));
+        if (image == null && item != null) {
+            image = RenderedItemCapture.cached(key);
+            if (image == null) {
+                var flat = ItemModelTexture.resolve(manager, BuiltInRegistries.ITEM.getKey(item));
+                if (flat.texture() != null) image = load(manager, flat.texture());
+            }
+        }
+        return image;
+    }
+
     private static BufferedImage load(ResourceManager manager, Identifier path) {
         try {
             var resource = manager.getResource(path);
@@ -135,7 +139,10 @@ public final class IconSilhouette {
 
     public static void invalidate(Identifier structure) {
         CACHE.entrySet().removeIf(entry -> {
-            if (!entry.getKey().structure().equals(structure)) return false;
+            Identifier marker = entry.getKey().structure();
+            Item overlay = StructureIcons.overlayItem(marker);
+            if (!marker.equals(structure) && !StructureIcons.baseIcon(marker).equals(structure)
+                    && (overlay == null || !StructureIcons.overlayKey(overlay).equals(structure))) return false;
             entry.getValue().ifPresent(texture ->
                     Minecraft.getInstance().getTextureManager().release(texture.texture()));
             return true;
